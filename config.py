@@ -39,24 +39,39 @@ INIMIGO_TANQUE_RAIO = 20
 
 # XP - Sistema progressivo
 XP_RAIO = 5
-XP_VALOR = 3
+XP_VALOR = 1
 
 def calcular_xp_para_level(level):
-    """Calcula XP necessário para um nível específico - progressivo"""
-    if level <= 1:
-        return 10
-    elif level <= 5:
-        return 10 + (level - 1) * 15  # 10, 25, 40, 55, 70
-    elif level <= 10:
-        return 70 + (level - 5) * 25  # 95, 120, 145, 170, 195
-    elif level <= 20:
-        return 195 + (level - 10) * 40  # 235, 275, 315, etc.
-    elif level <= 35:
-        return 595 + (level - 20) * 60  # Cresce mais rápido
-    elif level <= 50:
-        return 1495 + (level - 35) * 80
+    """Calcula XP necessário para subir para o próximo nível - progressão mais equilibrada"""
+    # Progressão mais suave que acompanha a dificuldade:
+    # Level 1->2: 25 XP (muito fácil)
+    # Level 2->3: 40 XP 
+    # Level 3->4: 60 XP
+    # Level 4->5: 85 XP
+    # Level 5->6: 115 XP
+    # Level 6->7: 150 XP
+    # Level 7->8: 190 XP
+    # Level 8+: continua crescendo mais devagar
+    
+    if level == 1:
+        return 25
+    elif level == 2:
+        return 40
+    elif level == 3:
+        return 60
+    elif level == 4:
+        return 85
+    elif level == 5:
+        return 115
+    elif level == 6:
+        return 150
+    elif level == 7:
+        return 190
     else:
-        return 2695 + (level - 50) * 100  # Muito alto para níveis altos
+        # Para níveis 8+, crescimento mais moderado
+        base = 190
+        incremento = (level - 7) * 35  # +35 XP por nível após o 7º
+        return base + incremento
 
 # Itens
 ITEM_RAIO = 8

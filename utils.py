@@ -29,7 +29,7 @@ def limitar_posicao(pos):
     """Limita uma posição aos bordos do mapa"""
     x = max(0, min(LARGURA_MAPA, pos[0]))
     y = max(0, min(ALTURA_MAPA, pos[1]))
-    return x, y
+    return [x, y]
 
 def obter_inimigo_mais_proximo(jogador_pos, inimigos):
     """Retorna o inimigo mais próximo do jogador"""

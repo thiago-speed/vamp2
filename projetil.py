@@ -169,7 +169,7 @@ class ProjetilInimigo:
         # Gerar partículas de rastro
         if self.animacao % 3 == 0:  # A cada 3 frames
             self.particulas_rastro.append({
-                'pos': self.pos.copy(),
+                'pos': list(self.pos),
                 'vida': 15,
                 'vida_max': 15,
                 'tamanho': random.randint(2, 4)

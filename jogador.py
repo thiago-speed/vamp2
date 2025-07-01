@@ -11,14 +11,22 @@ class EspadaOrbital:
         self.total_espadas = total_espadas
         self.angulo_base = (2 * math.pi / total_espadas) * indice
         self.angulo_atual = self.angulo_base
-        self.distancia = 60 + (jogador.espada_nivel * 8)  # Distância fixa
-        self.tamanho = 20 + (jogador.espada_nivel * 3)     # Tamanho da espada
+        self.distancia = 50 + (jogador.espada_nivel * 5)  # Menor distância
+        self.tamanho = 12 + (jogador.espada_nivel * 2)     # Menor tamanho
         self.dano = jogador.dano * (1 + jogador.espada_nivel * 0.8)
         
-        # Alcance de ataque maior que o do jogador
-        self.alcance_ataque = jogador.alcance_tiro + 50  # +50 pixels de alcance
+        # Cada espada tem seu próprio cooldown
+        self.ultimo_ataque = 0
+        self.cooldown_ataque = 1000 - (jogador.espada_nivel * 100)  # Cooldown individual
         
-        # Estados da estocada melhorados
+        # Alcance de ataque
+        self.alcance_ataque = jogador.alcance_tiro + 40
+        
+        # Posição fixa orbital - nunca muda
+        self.posicao_orbital_fixa = self.angulo_base
+        self.velocidade_rotacao = 1.5 + (jogador.espada_nivel * 0.15)  # Rotação independente
+        
+        # Estados da estocada simplificados
         self.em_estocada = False
         self.tempo_estocada = 0
         self.alvo_estocada = None
@@ -26,11 +34,8 @@ class EspadaOrbital:
         self.pos_alvo = [0, 0]
         self.pos_atual = [0, 0]
         
-        # Manter posição original para retorno
-        self.angulo_original = self.angulo_base
-        
-        # Efeitos visuais
-        self.trilha = []  # Trilha da espada
+        # Efeitos visuais reduzidos
+        self.trilha = []
         self.particulas_corte = []
         self.brilho_intensidade = 1.0
         
@@ -41,20 +46,19 @@ class EspadaOrbital:
             self.atualizar_orbital()
             self.verificar_estocada(inimigos)
         
-        # Atualizar trilha visual
+        # Atualizar trilha visual mais sutil
         self.atualizar_trilha()
         self.atualizar_particulas()
         
     def atualizar_trilha(self):
-        """Atualiza a trilha visual da espada"""
+        """Trilha mais sutil"""
         self.trilha.append({
-            'pos': self.pos_atual.copy(),
-            'vida': 8,
-            'vida_max': 8
+            'pos': list(self.pos_atual),
+            'vida': 4,  # Trilha mais curta
+            'vida_max': 4
         })
         
-        # Limitar tamanho da trilha e atualizar
-        if len(self.trilha) > 6:
+        if len(self.trilha) > 3:  # Trilha menor
             self.trilha.pop(0)
         
         for ponto in self.trilha:
@@ -75,37 +79,38 @@ class EspadaOrbital:
                 self.particulas_corte.remove(particula)
         
     def gerar_particulas_corte(self, pos):
-        """Gera partículas quando corta um inimigo"""
-        for _ in range(4):
+        """Menos partículas"""
+        for _ in range(2):  # Apenas 2 partículas
             angulo = random.uniform(0, 2 * math.pi)
-            velocidade = random.uniform(2, 4)
+            velocidade = random.uniform(1, 2)
             self.particulas_corte.append({
                 'x': pos[0],
                 'y': pos[1],
                 'vx': math.cos(angulo) * velocidade,
                 'vy': math.sin(angulo) * velocidade,
-                'vida': random.randint(8, 15),
-                'vida_max': 15
+                'vida': random.randint(5, 8),
+                'vida_max': 8
             })
         
     def atualizar_orbital(self):
-        """Movimento orbital normal - mantém posição fixa"""
-        velocidade_rotacao = 2.0 + (self.jogador.espada_nivel * 0.2)
-        self.angulo_atual += velocidade_rotacao * 0.016  # ~60fps
+        """Movimento orbital independente - sempre retorna à posição fixa"""
+        # Cada espada rota independentemente
+        self.angulo_atual += self.velocidade_rotacao * 0.016
         
-        # Manter a posição original relativa
+        # Manter a posição fixa orbital
         self.pos_atual[0] = self.jogador.pos[0] + math.cos(self.angulo_atual) * self.distancia
         self.pos_atual[1] = self.jogador.pos[1] + math.sin(self.angulo_atual) * self.distancia
         
-        # Atualizar brilho baseado na velocidade
-        self.brilho_intensidade = 0.9 + 0.3 * math.sin(self.angulo_atual * 2)
+        # Brilho sutil
+        self.brilho_intensidade = 0.8 + 0.2 * math.sin(self.angulo_atual * 2)
         
     def verificar_estocada(self, inimigos):
-        """Verifica se deve atacar um inimigo próximo - usa alcance maior"""
-        if pygame.time.get_ticks() - self.jogador.ultimo_ataque_espada < self.jogador.cooldown_estocada:
+        """Verifica se deve atacar - cada espada tem seu próprio cooldown"""
+        tempo_atual = pygame.time.get_ticks()
+        if tempo_atual - self.ultimo_ataque < self.cooldown_ataque:
             return
             
-        # Procurar inimigo mais próximo dentro do alcance de ataque da espada
+        # Procurar inimigo mais próximo
         inimigo_mais_proximo = None
         menor_distancia = self.alcance_ataque
         
@@ -120,47 +125,49 @@ class EspadaOrbital:
         
         if inimigo_mais_proximo:
             self.iniciar_estocada(inimigo_mais_proximo)
-            self.jogador.ultimo_ataque_espada = pygame.time.get_ticks()
+            self.ultimo_ataque = tempo_atual
     
     def iniciar_estocada(self, alvo):
-        """Inicia uma estocada em direção ao alvo"""
+        """Inicia estocada mas lembra posição orbital original"""
         self.em_estocada = True
         self.tempo_estocada = 0
         self.alvo_estocada = alvo
-        self.pos_inicial = self.pos_atual.copy()
-        self.pos_alvo = alvo.pos.copy()
-        self.brilho_intensidade = 1.8  # Brilho intenso durante estocada
+        self.pos_inicial = list(self.pos_atual)
+        self.pos_alvo = list(alvo.pos)
+        self.brilho_intensidade = 1.5
+        
+        # Salvar posição orbital para retorno
+        self.angulo_retorno = self.angulo_atual
         
     def atualizar_estocada(self):
-        """Atualiza movimento de estocada - retorna sempre para posição original"""
+        """Estocada rápida e sempre retorna à posição orbital original"""
         self.tempo_estocada += 1
-        duracao_total = 20  # frames para ida e volta (mais rápido)
+        duracao_total = 15  # Mais rápido
         
         if self.tempo_estocada < duracao_total // 2:
-            # Ida - movimento para o alvo com aceleração
+            # Ida para o alvo
             progresso = self.tempo_estocada / (duracao_total // 2)
-            progresso_suave = progresso * progresso  # Aceleração quadrática
-            self.pos_atual[0] = self.pos_inicial[0] + (self.pos_alvo[0] - self.pos_inicial[0]) * progresso_suave
-            self.pos_atual[1] = self.pos_inicial[1] + (self.pos_alvo[1] - self.pos_inicial[1]) * progresso_suave
+            self.pos_atual[0] = self.pos_inicial[0] + (self.pos_alvo[0] - self.pos_inicial[0]) * progresso
+            self.pos_atual[1] = self.pos_inicial[1] + (self.pos_alvo[1] - self.pos_inicial[1]) * progresso
         elif self.tempo_estocada < duracao_total:
-            # Volta - retorno à posição orbital original
+            # Volta para a posição orbital EXATA
             progresso = (self.tempo_estocada - duracao_total // 2) / (duracao_total // 2)
-            progresso_suave = 1 - (1 - progresso) * (1 - progresso)  # Desaceleração quadrática
             
-            # Calcular posição orbital original no momento atual
-            pos_orbital_atual = [
-                self.jogador.pos[0] + math.cos(self.angulo_atual) * self.distancia,
-                self.jogador.pos[1] + math.sin(self.angulo_atual) * self.distancia
+            # Posição orbital exata de onde saiu
+            pos_orbital_original = [
+                self.jogador.pos[0] + math.cos(self.angulo_retorno) * self.distancia,
+                self.jogador.pos[1] + math.sin(self.angulo_retorno) * self.distancia
             ]
             
-            self.pos_atual[0] = self.pos_alvo[0] + (pos_orbital_atual[0] - self.pos_alvo[0]) * progresso_suave
-            self.pos_atual[1] = self.pos_alvo[1] + (pos_orbital_atual[1] - self.pos_alvo[1]) * progresso_suave
+            self.pos_atual[0] = self.pos_alvo[0] + (pos_orbital_original[0] - self.pos_alvo[0]) * progresso
+            self.pos_atual[1] = self.pos_alvo[1] + (pos_orbital_original[1] - self.pos_alvo[1]) * progresso
         else:
-            # Finalizar estocada
+            # Finalizar estocada - retomar rotação normal
             self.em_estocada = False
             self.alvo_estocada = None
             self.brilho_intensidade = 1.0
-            self.atualizar_orbital()  # Retomar posição orbital
+            # Continuar rotação de onde parou
+            self.angulo_atual = self.angulo_retorno
     
     def colidir_com_inimigo(self, inimigo):
         """Verifica colisão com inimigo"""
@@ -170,142 +177,67 @@ class EspadaOrbital:
         distancia = calcular_distancia(self.pos_atual, inimigo.pos)
         if distancia < self.tamanho + inimigo.raio:
             inimigo.receber_dano(self.dano)
-            # Gerar partículas de corte
             self.gerar_particulas_corte(inimigo.pos)
             return True
         return False
     
     def desenhar(self, tela, camera):
-        """Desenha a espada com visual realista melhorado"""
+        """Desenha espada menor e mais simples"""
         pos_tela = posicao_na_tela(self.pos_atual, camera)
         
         if esta_na_tela(self.pos_atual, camera):
-            # Desenhar trilha da espada mais sutil
+            # Trilha mais sutil
             for i, ponto in enumerate(self.trilha):
                 vida_prop = ponto['vida'] / ponto['vida_max']
                 pos_trilha = posicao_na_tela(ponto['pos'], camera)
-                alpha = vida_prop * 0.3
-                tamanho_trilha = int(self.tamanho * vida_prop * 0.4)
+                alpha = vida_prop * 0.2
+                tamanho_trilha = int(self.tamanho * vida_prop * 0.3)
                 
                 if tamanho_trilha > 0:
-                    cor_trilha = tuple(max(0, min(255, int(c * alpha))) for c in (180, 180, 220))
+                    cor_trilha = tuple(max(0, min(255, int(c * alpha))) for c in (150, 150, 180))
                     pygame.draw.circle(tela, cor_trilha, (int(pos_trilha[0]), int(pos_trilha[1])), tamanho_trilha)
             
-            # Calcular ângulo da espada baseado no movimento
+            # Espada menor e mais simples
             if self.em_estocada:
-                # Durante estocada, apontar para o alvo
                 dx = self.pos_alvo[0] - self.pos_atual[0]
                 dy = self.pos_alvo[1] - self.pos_atual[1]
                 angulo_espada = math.atan2(dy, dx)
-                cor_base_raw = tuple(c * self.brilho_intensidade for c in (255, 215, 0))  # Dourado brilhante
+                cor_base_raw = tuple(c * self.brilho_intensidade for c in (255, 215, 0))
             else:
-                # Durante órbita, apontar para fora do centro
                 dx = self.pos_atual[0] - self.jogador.pos[0]
                 dy = self.pos_atual[1] - self.jogador.pos[1]
                 angulo_espada = math.atan2(dy, dx)
-                cor_base_raw = tuple(c * self.brilho_intensidade for c in (192, 192, 192))  # Prata
+                cor_base_raw = tuple(c * self.brilho_intensidade for c in (192, 192, 192))
             
-            # Validar cor para evitar erros
             cor_base = tuple(max(0, min(255, int(c))) for c in cor_base_raw)
             
-            # Dimensões da espada realista
-            comprimento = self.tamanho * 3.5  # Lâmina longa
-            largura_base = self.tamanho // 3   # Base da lâmina
-            comprimento_cabo = self.tamanho // 2  # Cabo
+            # Espada menor
+            comprimento = self.tamanho * 2.5  # Menor
+            largura_base = self.tamanho // 4
+            comprimento_cabo = self.tamanho // 3
             
-            # Desenhar sombra da espada
-            offset_sombra = 2
-            ponta_x = pos_tela[0] + math.cos(angulo_espada) * comprimento + offset_sombra
-            ponta_y = pos_tela[1] + math.sin(angulo_espada) * comprimento + offset_sombra
-            
-            base_x = pos_tela[0] - math.cos(angulo_espada) * comprimento_cabo + offset_sombra
-            base_y = pos_tela[1] - math.sin(angulo_espada) * comprimento_cabo + offset_sombra
-            
-            # Lados da lâmina
-            lado1_x = pos_tela[0] + math.cos(angulo_espada + math.pi/2) * largura_base + offset_sombra
-            lado1_y = pos_tela[1] + math.sin(angulo_espada + math.pi/2) * largura_base + offset_sombra
-            
-            lado2_x = pos_tela[0] + math.cos(angulo_espada - math.pi/2) * largura_base + offset_sombra
-            lado2_y = pos_tela[1] + math.sin(angulo_espada - math.pi/2) * largura_base + offset_sombra
-            
-            # Desenhar sombra
-            pontos_sombra = [
-                (int(ponta_x), int(ponta_y)),
-                (int(lado1_x), int(lado1_y)),
-                (int(base_x), int(base_y)),
-                (int(lado2_x), int(lado2_y))
-            ]
-            pygame.draw.polygon(tela, (0, 0, 0), pontos_sombra)
-            
-            # Recalcular para lâmina principal
+            # Desenhar espada simples
             ponta_x = pos_tela[0] + math.cos(angulo_espada) * comprimento
             ponta_y = pos_tela[1] + math.sin(angulo_espada) * comprimento
             
             base_x = pos_tela[0] - math.cos(angulo_espada) * comprimento_cabo
             base_y = pos_tela[1] - math.sin(angulo_espada) * comprimento_cabo
             
-            lado1_x = pos_tela[0] + math.cos(angulo_espada + math.pi/2) * largura_base
-            lado1_y = pos_tela[1] + math.sin(angulo_espada + math.pi/2) * largura_base
+            # Linha principal da espada
+            pygame.draw.line(tela, cor_base, (int(pos_tela[0]), int(pos_tela[1])), 
+                           (int(ponta_x), int(ponta_y)), 3)
             
-            lado2_x = pos_tela[0] + math.cos(angulo_espada - math.pi/2) * largura_base
-            lado2_y = pos_tela[1] + math.sin(angulo_espada - math.pi/2) * largura_base
+            # Cabo
+            pygame.draw.line(tela, (101, 67, 33), (int(pos_tela[0]), int(pos_tela[1])), 
+                           (int(base_x), int(base_y)), 5)
             
-            # Desenhar lâmina principal
-            pontos_lamina = [
-                (int(ponta_x), int(ponta_y)),
-                (int(lado1_x), int(lado1_y)),
-                (int(base_x), int(base_y)),
-                (int(lado2_x), int(lado2_y))
-            ]
-            pygame.draw.polygon(tela, cor_base, pontos_lamina)
-            
-            # Desenhar reflexo central na lâmina
-            meio_x = (ponta_x + base_x) / 2
-            meio_y = (ponta_y + base_y) / 2
-            cor_reflexo_raw = tuple(min(255, c + 60) for c in cor_base)
-            cor_reflexo = tuple(max(0, min(255, int(c))) for c in cor_reflexo_raw)
-            
-            # Linha central brilhante
-            pygame.draw.line(tela, cor_reflexo, 
-                           (int(ponta_x), int(ponta_y)), 
-                           (int(base_x), int(base_y)), 2)
-            
-            # Desenhar cabo detalhado
-            cabo_x = pos_tela[0] - math.cos(angulo_espada) * (comprimento_cabo + 8)
-            cabo_y = pos_tela[1] - math.sin(angulo_espada) * (comprimento_cabo + 8)
-            
-            # Cabo marrom
-            pygame.draw.line(tela, (101, 67, 33), 
-                           (int(base_x), int(base_y)), 
-                           (int(cabo_x), int(cabo_y)), 8)
-            
-            # Guarda da espada (crossguard)
-            guarda_tamanho = largura_base * 2
-            guarda1_x = pos_tela[0] + math.cos(angulo_espada + math.pi/2) * guarda_tamanho
-            guarda1_y = pos_tela[1] + math.sin(angulo_espada + math.pi/2) * guarda_tamanho
-            guarda2_x = pos_tela[0] + math.cos(angulo_espada - math.pi/2) * guarda_tamanho
-            guarda2_y = pos_tela[1] + math.sin(angulo_espada - math.pi/2) * guarda_tamanho
-            
-            pygame.draw.line(tela, cor_base, 
-                           (int(guarda1_x), int(guarda1_y)), 
-                           (int(guarda2_x), int(guarda2_y)), 4)
-            
-            # Pomo da espada
-            pygame.draw.circle(tela, (101, 67, 33), (int(cabo_x), int(cabo_y)), 4)
-            
-            # Desenhar partículas de corte
+            # Partículas pequenas
             for particula in self.particulas_corte:
                 vida_prop = particula['vida'] / particula['vida_max']
                 part_pos = posicao_na_tela([particula['x'], particula['y']], camera)
                 cor_part = tuple(max(0, min(255, int(c * vida_prop))) for c in (255, 255, 150))
-                tamanho_part = max(1, int(2 * vida_prop))
+                tamanho_part = max(1, int(1.5 * vida_prop))
                 pygame.draw.circle(tela, cor_part, (int(part_pos[0]), int(part_pos[1])), tamanho_part)
-            
-            # Efeito de brilho para estocada
-            if self.em_estocada:
-                brilho_raio = int(self.tamanho * 2)
-                cor_brilho = tuple(max(0, min(255, int(c * 0.5))) for c in (255, 255, 255))
-                pygame.draw.circle(tela, cor_brilho, (int(pos_tela[0]), int(pos_tela[1])), brilho_raio, 2)
 
 class Jogador:
     def __init__(self, x, y):
@@ -376,34 +308,47 @@ class Jogador:
         # Raios automáticos  
         self.ultimo_raios_auto = 0
         
+        # Direção do movimento
+        self.direcao_movimento = [0, -1]  # Padrão: para cima
+        self.ultima_direcao_valida = [0, -1]  # Última direção válida para bombas
+        
+        # Estados visuais e animação
+        self.cor = AZUL_CLARO
+        
+        # Stats base
+        self.vida_infinita = False  # Cheat de vida infinita
+        
     def mover(self, keys):
         dx, dy = 0, 0
         
+        # Capturar direção do teclado
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            dx -= 1
+            dx = -1
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            dx += 1
+            dx = 1
         if keys[pygame.K_w] or keys[pygame.K_UP]:
-            dy -= 1
+            dy = -1
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            dy += 1
+            dy = 1
+        
+        # Normalizar movimento diagonal
+        if dx != 0 and dy != 0:
+            dx *= 0.707
+            dy *= 0.707
         
         # Atualizar direção do movimento
         if dx != 0 or dy != 0:
             self.direcao_movimento = [dx, dy]
             self.ultima_direcao_valida = [dx, dy]
-            
-            # Normalizar movimento diagonal
-            if dx != 0 and dy != 0:
-                dx *= 0.707
-                dy *= 0.707
         
         # Aplicar movimento
-        self.pos[0] += dx * self.velocidade
-        self.pos[1] += dy * self.velocidade
+        nova_pos = [
+            self.pos[0] + dx * self.velocidade,
+            self.pos[1] + dy * self.velocidade
+        ]
         
         # Limitar aos bordos do mapa
-        self.pos = list(limitar_posicao(self.pos))
+        self.pos = limitar_posicao(nova_pos)
     
     def pode_atirar(self):
         return pygame.time.get_ticks() - self.ultimo_tiro > self.cooldown_tiro
@@ -412,6 +357,10 @@ class Jogador:
         self.ultimo_tiro = pygame.time.get_ticks()
     
     def receber_dano(self, dano):
+        """Aplica dano ao jogador, considerando vida infinita"""
+        if self.vida_infinita:
+            return False  # Não recebe dano se vida infinita está ativa
+        
         if self.invulneravel:
             return False
         
@@ -560,7 +509,7 @@ class Jogador:
             raio_bomba = 80 + (self.bomba_nivel * 20)
             
             return {
-                'pos': self.pos.copy(),
+                'pos': list(self.pos),
                 'dano': dano_bomba,
                 'raio': raio_bomba
             }
@@ -608,7 +557,7 @@ class Jogador:
             raio_campo = 100 + (self.campo_nivel * 25)
             
             return {
-                'pos': self.pos.copy(),
+                'pos': list(self.pos),
                 'forca': forca_campo,
                 'raio': raio_campo,
                 'duracao': 3000 + (self.campo_nivel * 500)  # 3s até 5.5s
@@ -618,10 +567,6 @@ class Jogador:
     def atualizar_habilidades(self):
         """Atualiza estados das habilidades especiais"""
         tempo_atual = pygame.time.get_ticks()
-        
-        # Atualizar dash
-        if self.dash_ativo and tempo_atual > self.dash_duracao:
-            self.dash_ativo = False
         
         # Atualizar escudo
         if self.escudo_ativo and tempo_atual > self.escudo_duracao:
@@ -687,7 +632,7 @@ class Jogador:
                 
                 return {
                     'pos': pos_bomba,
-                    'pos_inicial': self.pos.copy(),  # Para animação de arco
+                    'pos_inicial': list(self.pos),  # Para animação de arco
                     'dano': dano_bomba,
                     'raio': raio_bomba,
                     'tempo_voo': 60  # 1 segundo de voo
@@ -716,13 +661,20 @@ class Jogador:
     def obter_campo_ativo(self):
         """Retorna dados do campo gravitacional sempre ativo"""
         if self.campo_nivel > 0:
-            # Campo sempre ativo com dano baixo
-            dano_campo = 1 + (self.campo_nivel * 0.5)  # Dano muito baixo
-            forca_campo = 1 + (self.campo_nivel * 0.3)
-            raio_campo = 80 + (self.campo_nivel * 20)  # Raio cresce
+            # Campo sempre ativo
+            if self.campo_nivel >= 5:
+                # Nível lendário: mais dano e área maior
+                dano_campo = 3  # Dano base maior
+                forca_campo = 2  # Força de atração maior
+                raio_campo = 150  # Área maior
+            else:
+                # Níveis normais: apenas atração
+                dano_campo = 1 + (self.campo_nivel * 0.3)  # Dano menor
+                forca_campo = 1 + (self.campo_nivel * 0.2)  # Força de atração moderada
+                raio_campo = 80 + (self.campo_nivel * 15)  # Raio cresce moderadamente
             
             return {
-                'pos': self.pos.copy(),
+                'pos': list(self.pos),
                 'dano': dano_campo,
                 'forca': forca_campo,
                 'raio': raio_campo

@@ -82,7 +82,7 @@ class UpgradeManager:
             },
             'campo': {
                 'nome': 'Campo Gravitacional',
-                'descricao': 'Atrai e danifica inimigos constantemente',
+                'descricao': 'Causa dano constante nos inimigos',
                 'tipo': 'campo',
                 'nivel_max': 5
             }
@@ -98,29 +98,47 @@ class UpgradeManager:
         # Sistema de cartas lendárias
         self.cartas_lendarias_disponiveis = set()
         self.cartas_lendarias_obtidas = set()
+        
+        # Controle de cartas repetidas - cada carta só pode aparecer uma vez por seleção
+        self.cartas_ja_oferecidas = set()
     
     def obter_opcoes_upgrade(self, jogador):
-        """Gera 3 opções de upgrade para o jogador escolher"""
+        """Gera 3 opções de upgrade para o jogador escolher - sem repetições"""
+        # Limpar lista de cartas já oferecidas a cada nova seleção
+        self.cartas_ja_oferecidas.clear()
+        
+        # Primeiro verificar se todos os upgrades estão no máximo
+        if self.todos_upgrades_maximos(jogador):
+            return "todos_maximos"  # Sinal especial
+        
         # Primeiro verificar se há cartas lendárias disponíveis
         self.verificar_cartas_lendarias()
         
         opcoes = []
+        tentativas = 0
+        max_tentativas = 50  # Evitar loop infinito
         
         # Se há carta lendária disponível, incluir uma
-        if self.cartas_lendarias_disponiveis:
+        if self.cartas_lendarias_disponiveis and tentativas < max_tentativas:
             carta_lendaria = list(self.cartas_lendarias_disponiveis)[0]
             opcoes.append(self.criar_carta_lendaria(carta_lendaria))
             self.cartas_lendarias_disponiveis.remove(carta_lendaria)
             self.cartas_lendarias_obtidas.add(carta_lendaria)
+            self.cartas_ja_oferecidas.add(carta_lendaria)
         
-        # Preencher o resto com cartas normais
-        while len(opcoes) < 3:
+        # Preencher o resto com cartas normais (sem repetições)
+        while len(opcoes) < 3 and tentativas < max_tentativas:
+            tentativas += 1
             carta = self.gerar_carta_normal(jogador)
-            if carta:
+            if carta and carta['id'] not in self.cartas_ja_oferecidas:
                 opcoes.append(carta)
-            else:
+                self.cartas_ja_oferecidas.add(carta['id'])
+            elif not carta:
                 # Fallback para cartas sempre disponíveis
-                opcoes.append(self.gerar_carta_fallback(jogador))
+                carta_fallback = self.gerar_carta_fallback(jogador)
+                if carta_fallback and carta_fallback['id'] not in self.cartas_ja_oferecidas:
+                    opcoes.append(carta_fallback)
+                    self.cartas_ja_oferecidas.add(carta_fallback['id'])
         
         return opcoes[:3]
     
@@ -137,34 +155,34 @@ class UpgradeManager:
         """Gera uma carta de upgrade normal"""
         opcoes_disponiveis = []
         
-        # Stats básicos - verificar se ainda pode melhorar
-        if jogador.vida_nivel < 10:
+        # Stats básicos - verificar se ainda pode melhorar E se não tem lendária
+        if jogador.vida_nivel < 10 and 'vida_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('vida')
-        if jogador.dano_nivel < 10:
+        if jogador.dano_nivel < 10 and 'dano_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('dano')
-        if jogador.velocidade_nivel < 8:
+        if jogador.velocidade_nivel < 8 and 'velocidade_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('velocidade')
-        if jogador.alcance_nivel < 8:
+        if jogador.alcance_nivel < 8 and 'alcance_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('alcance')
-        if jogador.cadencia_nivel < 8:
+        if jogador.cadencia_nivel < 8 and 'cadencia_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('cadencia')
-        if jogador.atravessar_nivel < 5:
+        if jogador.atravessar_nivel < 5 and 'atravessar_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('atravessar')
-        if jogador.projeteis_nivel < 5:
+        if jogador.projeteis_nivel < 5 and 'projeteis_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('projeteis')
-        if jogador.coleta_nivel < 5:
+        if jogador.coleta_nivel < 5 and 'coleta_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('coleta')
         
-        # Habilidades especiais
-        if jogador.espada_nivel < 5:
+        # Habilidades especiais - verificar se não tem lendária
+        if jogador.espada_nivel < 5 and 'espada_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('espada')
-        if jogador.dash_nivel < 5:
+        if jogador.dash_nivel < 5 and 'dash_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('dash')
-        if jogador.bomba_nivel < 5:
+        if jogador.bomba_nivel < 5 and 'bomba_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('bomba')
-        if jogador.raios_nivel < 5:
+        if jogador.raios_nivel < 5 and 'raios_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('raios')
-        if jogador.campo_nivel < 5:
+        if jogador.campo_nivel < 5 and 'campo_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('campo')
         
         if not opcoes_disponiveis:
@@ -478,4 +496,32 @@ class UpgradeManager:
         
         elif tipo == 'campo_lendaria':
             jogador.campo_nivel = 10  # Máximo especial
-            jogador.buraco_negro = True 
+            jogador.buraco_negro = True
+    
+    def todos_upgrades_maximos(self, jogador):
+        """Verifica se todos os upgrades estão no nível máximo ou têm carta lendária"""
+        # Verificar stats básicos - considera máximo se tem lendária OU nível máximo
+        if (not (jogador.vida_nivel >= 10 or 'vida_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.dano_nivel >= 10 or 'dano_lendaria' in self.cartas_lendarias_obtidas) or 
+            not (jogador.velocidade_nivel >= 8 or 'velocidade_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.alcance_nivel >= 8 or 'alcance_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.cadencia_nivel >= 8 or 'cadencia_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.atravessar_nivel >= 5 or 'atravessar_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.projeteis_nivel >= 5 or 'projeteis_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.coleta_nivel >= 5 or 'coleta_lendaria' in self.cartas_lendarias_obtidas)):
+            return False
+        
+        # Verificar habilidades especiais - considera máximo se tem lendária OU nível máximo
+        if (not (jogador.espada_nivel >= 5 or 'espada_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.dash_nivel >= 5 or 'dash_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.bomba_nivel >= 5 or 'bomba_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.raios_nivel >= 5 or 'raios_lendaria' in self.cartas_lendarias_obtidas) or
+            not (jogador.campo_nivel >= 5 or 'campo_lendaria' in self.cartas_lendarias_obtidas)):
+            return False
+        
+        # Verificar se ainda há cartas lendárias disponíveis
+        self.verificar_cartas_lendarias()
+        if self.cartas_lendarias_disponiveis:
+            return False
+        
+        return True 

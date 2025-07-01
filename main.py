@@ -62,12 +62,20 @@ class Jogo:
         
         # Sistema de spawn de itens raros
         self.ultimo_coracao = 0
-        self.intervalo_coracao = 10000  # 10 segundos mínimo entre corações
+        self.intervalo_coracao = 30000  # 30 segundos mínimo entre corações (muito mais raro)
         
         # Controle de ondas
         self.onda_atual = 1
         self.inimigos_por_onda = 5
         self.max_inimigos_tela = 15
+        
+        # Mensagem de upgrades máximos
+        self.mostrando_mensagem_maximos = False
+        self.tempo_mensagem_maximos = 0
+        
+        # Modo Desenvolvedor
+        self.modo_dev = True  # Ativar por padrão para testes
+        self.dev_menu_aberto = False
         
     def obter_tempo_jogo(self):
         """Retorna o tempo de jogo em segundos"""
@@ -83,16 +91,24 @@ class Jogo:
         self.camera[1] = max(0, min(ALTURA_MAPA - ALTURA_TELA, self.camera[1]))
     
     def spawnar_inimigos(self):
-        """Gera novos inimigos baseado no tempo - sistema melhorado"""
+        """Sistema de spawn melhorado com dificuldade progressiva"""
         tempo_atual = pygame.time.get_ticks()
         tempo_jogo = self.obter_tempo_jogo()
         
-        # Verificar se deve ir para arena do boss (14 minutos)
-        if tempo_jogo >= 840:  # 14 minutos = 840 segundos
-            if not hasattr(self, 'arena_boss'):
-                self.arena_boss = True
-                self.inimigos = []  # Limpar todos os inimigos
-                # Boss será spawnado em verificar_boss()
+        # Boss aparece em 10 minutos (600 segundos)
+        if tempo_jogo >= 600 and not self.boss:
+            self.boss = Boss(
+                LARGURA_MAPA // 2 + random.randint(-200, 200),
+                ALTURA_MAPA // 2 + random.randint(-200, 200)
+            )
+            # Limpar inimigos existentes para dar foco ao boss
+            self.inimigos.clear()
+            # Remover todo XP do chão
+            self.xps.clear()
+            return
+        
+        # Não spawnar inimigos se o boss estiver ativo
+        if self.boss and self.boss.ativo:
             return
         
         # Ajustar intervalo de spawn baseado no tempo - mais agressivo
@@ -155,24 +171,6 @@ class Jogo:
                 coracao = Item(pos_x, pos_y, "coracao")
                 self.itens.append(coracao)
                 self.ultimo_coracao = tempo_atual
-    
-    def verificar_boss(self):
-        """Verifica se é hora de spawnar o boss - agora em arena especial"""
-        tempo_jogo = self.obter_tempo_jogo()
-        
-        # Boss arena aos 14 minutos
-        if tempo_jogo >= 840 and not self.boss:  # 14 minutos
-            # Spawnar boss no centro do mapa
-            self.boss = Boss(LARGURA_MAPA // 2, ALTURA_MAPA // 2)
-            
-            # Limpar todos os outros elementos
-            self.inimigos = []
-            self.projeteis_inimigos = []
-            self.xps = []
-            self.itens = []
-            
-            # Marcar que estamos na arena do boss
-            self.arena_boss = True
     
     def atirar(self):
         """Sistema de tiro automático do jogador"""
@@ -278,8 +276,12 @@ class Jogo:
                 # Se subiu de nível, pausar jogo e mostrar opções
                 if subiu_nivel:
                     opcoes = self.upgrade_manager.obter_opcoes_upgrade(self.jogador)
-                    self.tela_upgrade = TelaUpgrade(opcoes)
-                    self.estado = "upgrade"
+                    if opcoes == "todos_maximos":
+                        # Todos os upgrades estão no máximo - mostrar mensagem
+                        self.mostrar_mensagem_maximos()
+                    else:
+                        self.tela_upgrade = TelaUpgrade(opcoes)
+                        self.estado = "upgrade"
                 
                 # Remover XP coletado
                 self.xps.remove(xp)
@@ -331,7 +333,6 @@ class Jogo:
         # Spawning
         self.spawnar_inimigos()
         self.spawnar_itens()
-        self.verificar_boss()
         
         # Atirar
         self.atirar()
@@ -339,10 +340,15 @@ class Jogo:
         # Atualizar inimigos
         self.atualizar_inimigos()
         
-        # Atualizar boss
-        if self.boss:
-            novos_projeteis = self.boss.atualizar(self.jogador.pos)
-            self.projeteis_boss.extend(novos_projeteis)
+        # Atualizar boss se existir
+        if self.boss and self.boss.ativo:
+            projéteis_boss = self.boss.atualizar(self.jogador.pos)
+            if projéteis_boss:
+                self.projeteis_boss.extend(projéteis_boss)
+            
+            if self.boss.hp <= 0:
+                self.boss.ativo = False
+                self.estado = "vitoria"
         
         # Atualizar projéteis
         for projetil in self.projeteis[:]:
@@ -377,6 +383,11 @@ class Jogo:
         # Atualizar habilidades
         self.atualizar_habilidades()
         
+        # Atualizar mensagem de upgrades máximos
+        if self.mostrando_mensagem_maximos:
+            if pygame.time.get_ticks() > self.tempo_mensagem_maximos:
+                self.mostrando_mensagem_maximos = False
+        
         # Processar colisões
         self.processar_colisoes()
     
@@ -404,7 +415,15 @@ class Jogo:
         for proj_inimigo in self.projeteis_inimigos:
             proj_inimigo.desenhar(self.tela, self.camera)
         
+        # Desenhar projéteis do boss
+        for proj_boss in self.projeteis_boss:
+            proj_boss.desenhar(self.tela, self.camera)
+        
         self.jogador.desenhar(self.tela, self.camera)
+        
+        # Desenhar boss se ativo
+        if self.boss and self.boss.ativo:
+            self.boss.desenhar(self.tela, self.camera)
         
         # Desenhar habilidades
         for raio in self.raios:
@@ -429,11 +448,19 @@ class Jogo:
         if self.estado == "upgrade" and self.tela_upgrade:
             self.tela_upgrade.desenhar(self.tela)
         
+        # Mensagem de todos upgrades coletados
+        if self.mostrando_mensagem_maximos:
+            self.desenhar_mensagem_maximos()
+        
         # Telas finais
         elif self.estado == "game_over":
             self.desenhar_game_over()
         elif self.estado == "vitoria":
             self.desenhar_vitoria()
+        
+        # Menu Desenvolvedor
+        if self.modo_dev:
+            self.desenhar_menu_dev()
         
         pygame.display.flip()
     
@@ -600,10 +627,15 @@ class Jogo:
             
             if evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
-                    return False
+                    if self.estado == "jogando":
+                        pygame.quit()
+                        exit()
+                    elif self.estado in ["game_over", "vitoria"]:
+                        pygame.quit()
+                        exit()
                 
                 # Habilidades especiais (apenas durante o jogo)
-                if self.estado == "jogando":
+                elif self.estado == "jogando":
                     # Dash com ESPAÇO - ÚNICA habilidade manual
                     if evento.key == pygame.K_SPACE:
                         keys = pygame.key.get_pressed()
@@ -627,6 +659,68 @@ class Jogo:
                             dy *= 0.707
                         
                         self.jogador.usar_dash(dx, dy)
+                    
+                    # Modo Desenvolvedor - teclas de atalho
+                    elif self.modo_dev:
+                        if evento.key == pygame.K_F1:
+                            # Subir de nível instantaneamente
+                            self.jogador.xp = self.jogador.xp_para_proximo
+                            opcoes = self.upgrade_manager.obter_opcoes_upgrade(self.jogador)
+                            if opcoes == "todos_maximos":
+                                self.mostrar_mensagem_maximos()
+                            else:
+                                self.tela_upgrade = TelaUpgrade(opcoes)
+                                self.estado = "upgrade"
+                        
+                        elif evento.key == pygame.K_F2:
+                            # Avançar 1 minuto no tempo de jogo
+                            self.inicio_jogo -= 60000  # 60 segundos em ms
+                        
+                        elif evento.key == pygame.K_F3:
+                            # Dar todos os upgrades básicos level 1
+                            for upgrade_tipo in ['vida', 'dano', 'velocidade', 'alcance', 'cadencia']:
+                                if getattr(self.jogador, f"{upgrade_tipo}_nivel") == 0:
+                                    fake_upgrade = {
+                                        'id': upgrade_tipo,
+                                        'nome': f'Dev {upgrade_tipo}',
+                                        'descricao': f'Dev upgrade {upgrade_tipo}',
+                                        'tipo': upgrade_tipo
+                                    }
+                                    self.upgrade_manager.aplicar_upgrade(self.jogador, fake_upgrade)
+                        
+                        elif evento.key == pygame.K_F4:
+                            # Dar uma habilidade especial aleatória
+                            habilidades = ['espada', 'dash', 'bomba', 'raios', 'campo']
+                            for habilidade in habilidades:
+                                if getattr(self.jogador, f"{habilidade}_nivel") == 0:
+                                    fake_upgrade = {
+                                        'id': habilidade,
+                                        'nome': f'Dev {habilidade}',
+                                        'descricao': f'Dev habilidade {habilidade}',
+                                        'tipo': habilidade
+                                    }
+                                    self.upgrade_manager.aplicar_upgrade(self.jogador, fake_upgrade)
+                                    break
+                        
+                        elif evento.key == pygame.K_F5:
+                            # Spawnar boss instantaneamente
+                            if not self.boss:
+                                self.boss = Boss(
+                                    LARGURA_MAPA // 2 + random.randint(-200, 200),
+                                    ALTURA_MAPA // 2 + random.randint(-200, 200)
+                                )
+                        
+                        elif evento.key == pygame.K_F6:
+                            # Curar completamente
+                            self.jogador.hp = self.jogador.hp_max
+                        
+                        elif evento.key == pygame.K_F7:
+                            # Toggle menu dev visual
+                            self.dev_menu_aberto = not self.dev_menu_aberto
+                        
+                        elif evento.key == pygame.K_F8:
+                            # Toggle vida infinita
+                            self.jogador.vida_infinita = not self.jogador.vida_infinita
             
             # Processar eventos de upgrade (teclado e mouse)
             if self.estado == "upgrade" and self.tela_upgrade:
@@ -815,6 +909,101 @@ class Jogo:
                 distancia = calcular_distancia(inimigo.pos, self.jogador.pos)
                 if distancia < inimigo.raio + self.jogador.raio:
                     self.jogador.receber_dano(inimigo.dano)
+
+    def mostrar_mensagem_maximos(self):
+        """Ativa a mensagem de todos upgrades coletados"""
+        self.mostrando_mensagem_maximos = True
+        self.tempo_mensagem_maximos = pygame.time.get_ticks() + 1000  # 1 segundo
+
+    def desenhar_mensagem_maximos(self):
+        """Desenha a mensagem de todos upgrades coletados"""
+        overlay = pygame.Surface((LARGURA_TELA, ALTURA_TELA))
+        overlay.set_alpha(150)
+        overlay.fill(PRETO)
+        self.tela.blit(overlay, (0, 0))
+        
+        # Fundo da mensagem
+        largura_msg = 600
+        altura_msg = 200
+        x_msg = LARGURA_TELA // 2 - largura_msg // 2
+        y_msg = ALTURA_TELA // 2 - altura_msg // 2
+        
+        pygame.draw.rect(self.tela, (50, 50, 50), (x_msg, y_msg, largura_msg, altura_msg))
+        pygame.draw.rect(self.tela, DOURADO, (x_msg, y_msg, largura_msg, altura_msg), 3)
+        
+        desenhar_texto(self.tela, "🎉 TODOS OS UPGRADES COLETADOS! 🎉", 
+                      (LARGURA_TELA // 2 - 200, ALTURA_TELA // 2 - 50), DOURADO, 36, sombra=True)
+        desenhar_texto(self.tela, "Você é imbatível!", 
+                      (LARGURA_TELA // 2 - 80, ALTURA_TELA // 2), VERDE, 24, sombra=True)
+        desenhar_texto(self.tela, "Continue jogando para enfrentar o BOSS!", 
+                      (LARGURA_TELA // 2 - 160, ALTURA_TELA // 2 + 30), BRANCO, 20, sombra=True)
+
+    def desenhar_menu_dev(self):
+        """Desenha o menu de desenvolvedor"""
+        if not self.dev_menu_aberto:
+            # Apenas mostrar indicador no canto
+            desenhar_texto(self.tela, "DEV MODE (F7)", (10, 10), AMARELO, 16)
+            desenhar_texto(self.tela, "F1:Level F2:+1min F3:Stats F4:Skill F5:Boss F6:Heal F8:God", 
+                          (10, 30), BRANCO, 14)
+            # Mostrar status de vida infinita
+            if self.jogador.vida_infinita:
+                desenhar_texto(self.tela, "🛡️ VIDA INFINITA ATIVA", (10, 50), VERDE, 16)
+            return
+            
+        # Menu completo
+        overlay = pygame.Surface((LARGURA_TELA, ALTURA_TELA))
+        overlay.set_alpha(180)
+        overlay.fill(PRETO)
+        self.tela.blit(overlay, (0, 0))
+        
+        # Fundo do menu
+        largura_menu = 500
+        altura_menu = 450
+        x_menu = LARGURA_TELA // 2 - largura_menu // 2
+        y_menu = ALTURA_TELA // 2 - altura_menu // 2
+        
+        pygame.draw.rect(self.tela, (40, 40, 40), (x_menu, y_menu, largura_menu, altura_menu))
+        pygame.draw.rect(self.tela, DOURADO, (x_menu, y_menu, largura_menu, altura_menu), 3)
+        
+        # Título
+        desenhar_texto(self.tela, "🎮 MENU DESENVOLVEDOR 🎮", 
+                      (x_menu + largura_menu // 2 - 140, y_menu + 20), DOURADO, 24)
+        
+        y_atual = y_menu + 60
+        espaco = 35
+        
+        # Lista de comandos
+        comandos = [
+            ("F1", "Subir de nível instantaneamente", VERDE),
+            ("F2", "Avançar 1 minuto no tempo", AZUL_CLARO),  
+            ("F3", "Dar upgrades básicos (level 1)", AMARELO),
+            ("F4", "Dar habilidade especial aleatória", ROXO),
+            ("F5", "Spawnar boss instantaneamente", VERMELHO),
+            ("F6", "Curar jogador completamente", VERDE),
+            ("F7", "Fechar este menu", BRANCO),
+            ("F8", f"Vida Infinita: {'ON' if self.jogador.vida_infinita else 'OFF'}", 
+             VERDE if self.jogador.vida_infinita else VERMELHO)
+        ]
+        
+        for tecla, descricao, cor in comandos:
+            # Desenhar tecla
+            pygame.draw.rect(self.tela, cor, (x_menu + 20, y_atual - 2, 30, 25))
+            desenhar_texto(self.tela, tecla, (x_menu + 25, y_atual), PRETO, 16)
+            
+            # Desenhar descrição
+            desenhar_texto(self.tela, descricao, (x_menu + 65, y_atual), BRANCO, 18)
+            y_atual += espaco
+        
+        # Info atual do jogador
+        y_atual += 20
+        desenhar_texto(self.tela, f"Nível: {self.jogador.level} | XP: {self.jogador.xp}/{self.jogador.xp_para_proximo}", 
+                      (x_menu + 20, y_atual), BRANCO, 16)
+        y_atual += 20
+        desenhar_texto(self.tela, f"Tempo: {self.obter_tempo_jogo():.1f}s | HP: {self.jogador.hp}/{self.jogador.hp_max}", 
+                      (x_menu + 20, y_atual), BRANCO, 16)
+        y_atual += 20
+        desenhar_texto(self.tela, f"Boss: {'Ativo' if self.boss and self.boss.ativo else 'Inativo'} | Inimigos: {len(self.inimigos)}", 
+                      (x_menu + 20, y_atual), BRANCO, 16)
 
 if __name__ == "__main__":
     jogo = Jogo()

@@ -135,10 +135,10 @@ class Inimigo:
 
 def gerar_inimigo_aleatorio(jogador_pos, tempo_jogo):
     """Gera um inimigo aleatório - sistema melhorado com novos tipos"""
-    # Calcular multiplicadores baseados no tempo
-    mult_hp = 1 + (tempo_jogo / 120)  # +100% HP a cada 2 minutos
-    mult_dano = 1 + (tempo_jogo / 180)  # +100% dano a cada 3 minutos
-    mult_xp = 1 + (tempo_jogo / 60)    # +100% XP a cada 1 minuto
+    # Calcular multiplicadores baseados no tempo - mais equilibrados
+    mult_hp = 1 + (tempo_jogo / 180)  # +100% HP a cada 3 minutos (era 2)
+    mult_dano = 1 + (tempo_jogo / 240)  # +100% dano a cada 4 minutos (era 3)
+    mult_xp = 1 + (tempo_jogo / 150)    # +100% XP a cada 2.5 minutos (era 1)
     mult_velocidade = 1 + (tempo_jogo / 300)  # +100% velocidade a cada 5 minutos
     
     # Probabilidades dos tipos baseadas no tempo

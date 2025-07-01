@@ -178,7 +178,7 @@ class Bomba:
         self.altura_maxima = 100  # Altura do arco
         
         # Posição atual da bomba durante o voo
-        self.pos_atual = self.pos_inicial.copy()
+        self.pos_atual = list(self.pos_inicial)
         
         self.tempo_vida = pygame.time.get_ticks() + (tempo_voo * 16)  # Tempo total incluindo voo
         self.animacao = 0
@@ -207,7 +207,7 @@ class Bomba:
             # Iniciar explosão
             self.voando = False
             self.explodindo = True
-            self.pos_atual = self.pos_final.copy()
+            self.pos_atual = list(self.pos_final)
             self.gerar_particulas()
             self.gerar_ondas()
             self.tempo_vida = pygame.time.get_ticks() + 600  # 0.6s de explosão
@@ -399,18 +399,40 @@ class CampoGravitacional:
     
     def afetar_inimigo(self, inimigo):
         if not self.ativo:
-            return
+            return False
         
         distancia = calcular_distancia(self.pos, inimigo.pos)
         if distancia < self.raio:
-            # Puxar inimigo em direção ao centro
-            dx = self.pos[0] - inimigo.pos[0]
-            dy = self.pos[1] - inimigo.pos[1]
+            # Campo gravitacional agora só causa dano, não atrai
             
-            if dx != 0 or dy != 0:
-                dir_x, dir_y = normalizar_vetor(dx, dy)
-                inimigo.pos[0] += dir_x * self.forca
-                inimigo.pos[1] += dir_y * self.forca
+            # Apenas no nível lendário (5): desacelera os inimigos
+            if inimigo.campo_nivel >= 5:
+                # Desacelerar inimigo
+                if hasattr(inimigo, 'velocidade_original'):
+                    inimigo.velocidade = inimigo.velocidade_original * 0.7  # 30% mais lento
+                else:
+                    inimigo.velocidade_original = inimigo.velocidade
+                    inimigo.velocidade = inimigo.velocidade * 0.7
+            else:
+                # Restaurar velocidade original se não estiver no nível 5
+                if hasattr(inimigo, 'velocidade_original'):
+                    inimigo.velocidade = inimigo.velocidade_original
+            
+            # Causar dano periódico
+            tempo_atual = pygame.time.get_ticks()
+            if tempo_atual - inimigo.ultimo_dano > inimigo.intervalo_dano:
+                dano_final = inimigo.dano
+                if inimigo.campo_nivel >= 5:
+                    dano_final *= 1.5  # 50% mais dano no nível 5
+                inimigo.receber_dano(dano_final)
+                inimigo.ultimo_dano = tempo_atual
+                return True
+        else:
+            # Restaurar velocidade original quando sair do campo
+            if hasattr(inimigo, 'velocidade_original'):
+                inimigo.velocidade = inimigo.velocidade_original
+        
+        return False
     
     def desenhar(self, tela, camera):
         if not self.ativo:
@@ -444,7 +466,9 @@ class CampoPermanente:
         
         distancia = calcular_distancia(self.jogador.pos, inimigo.pos)
         if distancia < campo_dados['raio']:
-            # Apenas no nível máximo (5) aplica desaceleração
+            # Campo gravitacional agora só causa dano, não atrai
+            
+            # Apenas no nível lendário (5): desacelera os inimigos
             if self.jogador.campo_nivel >= 5:
                 # Desacelerar inimigo
                 if hasattr(inimigo, 'velocidade_original'):
@@ -452,20 +476,18 @@ class CampoPermanente:
                 else:
                     inimigo.velocidade_original = inimigo.velocidade
                     inimigo.velocidade = inimigo.velocidade * 0.7
-            
-            # Puxar inimigo em direção ao jogador (sempre ativo)
-            dx = self.jogador.pos[0] - inimigo.pos[0]
-            dy = self.jogador.pos[1] - inimigo.pos[1]
-            
-            if dx != 0 or dy != 0:
-                dir_x, dir_y = normalizar_vetor(dx, dy)
-                inimigo.pos[0] += dir_x * campo_dados['forca']
-                inimigo.pos[1] += dir_y * campo_dados['forca']
+            else:
+                # Restaurar velocidade original se não estiver no nível 5
+                if hasattr(inimigo, 'velocidade_original'):
+                    inimigo.velocidade = inimigo.velocidade_original
             
             # Causar dano periódico
             tempo_atual = pygame.time.get_ticks()
             if tempo_atual - self.ultimo_dano > self.intervalo_dano:
-                inimigo.receber_dano(campo_dados['dano'])
+                dano_final = campo_dados['dano']
+                if self.jogador.campo_nivel >= 5:
+                    dano_final *= 1.5  # 50% mais dano no nível 5
+                inimigo.receber_dano(dano_final)
                 self.ultimo_dano = tempo_atual
                 return True
         else:
