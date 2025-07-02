@@ -8,7 +8,7 @@ class Boss:
     def __init__(self, x, y):
         self.pos = [x, y]
         self.raio = 60  # Boss é grande
-        self.hp_max = 3000  # Vida alta para ser desafiador
+        self.hp_max = 15000  # Vida muito alta para ser bem desafiador
         self.hp = self.hp_max
         self.velocidade = 1.5
         self.dano = 30
@@ -249,7 +249,7 @@ class Boss:
                     'vida': random.randint(20, 40),
                     'cor': self.cores_fase[self.fase_atual - 1]
                 })
-
+    
     def iniciar_ataque(self, jogador_pos):
         """Inicia um ataque baseado na fase atual"""
         if self.invulneravel:
@@ -877,6 +877,22 @@ class Boss:
         
         return False
     
+    def colidir_com_inimigo(self, atacante):
+        """Verifica colisão com espadas orbitais e outras habilidades - compatibilidade com sistema de inimigos"""
+        if not self.ativo or self.teleportando or self.invulneravel:
+            return False
+        
+        # Se o atacante tem posição e dano (como espadas orbitais)
+        if hasattr(atacante, 'pos_atual') and hasattr(atacante, 'dano'):
+            distancia = calcular_distancia(self.pos, atacante.pos_atual)
+            raio_atacante = getattr(atacante, 'tamanho', 10)  # Usar tamanho ou padrão
+            
+            if distancia < self.raio + raio_atacante:
+                self.receber_dano(atacante.dano)
+                return True
+        
+        return False
+    
     def desenhar(self, tela, camera):
         if not self.ativo:
             return
@@ -974,44 +990,9 @@ class Boss:
                     if espessura > 0:
                         cor_borda = (255 - i * 40, 255 - i * 40, 255 - i * 40)
                         pygame.draw.circle(tela, cor_borda, pos_final, self.raio - i * 2, espessura)
-                
-                # Desenhar símbolo da fase no centro com efeito de brilho
-                simbolos = ["Ⅰ", "Ⅱ", "☠"]  # Símbolos romanos para fases 1, 2 e símbolo de morte para fase 3
-                simbolo = simbolos[self.fase_atual - 1]
-                
-                # Sombra do símbolo
-                desenhar_texto(tela, simbolo, (pos_final[0] - 12, pos_final[1] - 17), 
-                             PRETO, 34, sombra=True)
-                # Símbolo principal
-                desenhar_texto(tela, simbolo, (pos_final[0] - 10, pos_final[1] - 15), 
-                             BRANCO, 30, sombra=True)
             
             # Barra de vida épica
             self.desenhar_barra_vida_epica(tela, pos_tela)
-            
-            # Indicador de ataque com nome épico
-            if self.executando_ataque:
-                ataques_disponiveis = self.obter_ataques_disponiveis()
-                ataque_nome = ataques_disponiveis[self.tipo_ataque_atual].upper().replace("_", " ")
-                
-                # Fundo do nome do ataque
-                largura_texto = len(ataque_nome) * 12
-                altura_texto = 30
-                x_texto = pos_final[0] - largura_texto // 2
-                y_texto = pos_final[1] - 90
-                
-                # Fundo semi-transparente
-                surf_fundo = pygame.Surface((largura_texto + 20, altura_texto))
-                surf_fundo.set_alpha(150)
-                surf_fundo.fill(PRETO)
-                tela.blit(surf_fundo, (x_texto - 10, y_texto - 5))
-                
-                # Texto com efeito pulsante
-                escala = 1 + 0.1 * math.sin(pygame.time.get_ticks() * 0.01)
-                tamanho_fonte = int(22 * escala)
-                desenhar_texto(tela, f"💀 {ataque_nome} 💀", 
-                             (x_texto, y_texto), 
-                             cor_aura, tamanho_fonte, sombra=True)
             
             # Indicador de fase
             fase_texto = f"FASE {self.fase_atual}"
@@ -1052,12 +1033,7 @@ class Boss:
                 surf_brilho.set_alpha(self.brilho_ataque)
                 surf_brilho.fill(BRANCO)
                 tela.blit(surf_brilho, (x_barra, y_barra))
-        
-        # Texto da vida
-        texto_vida = f"{self.hp}/{self.hp_max}"
-        desenhar_texto(tela, texto_vida, (x_barra + largura_barra // 2 - 30, y_barra - 20), 
-                      BRANCO, 16, sombra=True)
-
+    
     def atualizar_indicadores(self, tempo_atual):
         """Atualiza os indicadores de ataque"""
         # Remover indicadores expirados

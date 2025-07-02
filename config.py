@@ -70,7 +70,7 @@ def calcular_xp_para_level(level):
     else:
         # Para níveis 8+, crescimento mais moderado
         base = 190
-        incremento = (level - 7) * 35  # +35 XP por nível após o 7º
+        incremento = (level - 7) * 35  # +35 XP por nivel apos o 7
         return base + incremento
 
 # Itens
@@ -78,7 +78,7 @@ ITEM_RAIO = 8
 
 # Boss
 BOSS_RAIO = 50
-BOSS_HP = 1000
+BOSS_HP = 5000
 
 # Minimapa
 MINIMAPA_TAMANHO = 150

@@ -3,91 +3,6 @@ from config import *
 
 class UpgradeManager:
     def __init__(self):
-        # Definir todos os tipos de upgrade disponíveis
-        self.upgrades_basicos = {
-            'vida': {
-                'nome': 'Vida Extra',
-                'descricao': '+10 HP (Máx. 5 upgrades)',
-                'tipo': 'vida',
-                'nivel_max': 5
-            },
-            'dano': {
-                'nome': 'Força',
-                'descricao': '+5 de dano nos ataques',
-                'tipo': 'dano',
-                'nivel_max': 8
-            },
-            'velocidade': {
-                'nome': 'Velocidade',
-                'descricao': '+20% velocidade de movimento',
-                'tipo': 'velocidade',
-                'nivel_max': 6
-            },
-            'alcance': {
-                'nome': 'Alcance',
-                'descricao': '+30% alcance dos ataques',
-                'tipo': 'alcance',
-                'nivel_max': 5
-            },
-            'cadencia': {
-                'nome': 'Cadência',
-                'descricao': '+25% velocidade de ataque',
-                'tipo': 'cadencia',
-                'nivel_max': 6
-            },
-            'atravessar': {
-                'nome': 'Penetração',
-                'descricao': 'Projéteis atravessam +1 inimigo',
-                'tipo': 'atravessar',
-                'nivel_max': 4
-            },
-            'projeteis': {
-                'nome': 'Múltiplos Tiros',
-                'descricao': '+1 projétil simultâneo',
-                'tipo': 'projeteis',
-                'nivel_max': 4
-            },
-            'coleta': {
-                'nome': 'Magnetismo XP',
-                'descricao': '+20px raio de coleta de XP',
-                'tipo': 'coleta',
-                'nivel_max': 5
-            }
-        }
-        
-        self.upgrades_habilidades = {
-            'espada': {
-                'nome': 'Espada Orbital',
-                'descricao': 'Espada que orbita e ataca inimigos',
-                'tipo': 'espada',
-                'nivel_max': 5
-            },
-            'dash': {
-                'nome': 'Dash Temporal',
-                'descricao': 'Teleporte rápido com invulnerabilidade',
-                'tipo': 'dash',
-                'nivel_max': 5
-            },
-            'bomba': {
-                'nome': 'Bomba Automática',
-                'descricao': 'Bombas explodem automaticamente',
-                'tipo': 'bomba',
-                'nivel_max': 5
-            },
-            'raios': {
-                'nome': 'Raios Tempestade',
-                'descricao': 'Raios automáticos com ramificações',
-                'tipo': 'raios',
-                'nivel_max': 5
-            },
-            'campo': {
-                'nome': 'Campo Gravitacional',
-                'descricao': 'Causa dano constante nos inimigos',
-                'tipo': 'campo',
-                'nivel_max': 5
-            }
-        }
-        
         # Contadores de cartas por tipo
         self.contadores_cartas = {
             'vida': 0, 'dano': 0, 'velocidade': 0, 'alcance': 0, 
@@ -101,6 +16,81 @@ class UpgradeManager:
         
         # Controle de cartas repetidas - cada carta só pode aparecer uma vez por seleção
         self.cartas_ja_oferecidas = set()
+    
+    def get_upgrades_basicos(self, jogador):
+        """Retorna os upgrades básicos disponíveis"""
+        return {
+            'vida': {
+                'nome': 'Vida Extra',
+                'descricao': f'Nivel {jogador.vida_nivel} -> UPGRADE PRO NIVEL {jogador.vida_nivel + 1}',
+                'tipo': 'vida'
+            },
+            'dano': {
+                'nome': 'Forca',
+                'descricao': f'Nivel {jogador.dano_nivel} -> UPGRADE PRO NIVEL {jogador.dano_nivel + 1}',
+                'tipo': 'dano'
+            },
+            'velocidade': {
+                'nome': 'Velocidade',
+                'descricao': f'Nivel {jogador.velocidade_nivel} -> UPGRADE PRO NIVEL {jogador.velocidade_nivel + 1}',
+                'tipo': 'velocidade'
+            },
+            'alcance': {
+                'nome': 'Alcance',
+                'descricao': f'Nivel {jogador.alcance_nivel} -> UPGRADE PRO NIVEL {jogador.alcance_nivel + 1}',
+                'tipo': 'alcance'
+            },
+            'cadencia': {
+                'nome': 'Cadencia',
+                'descricao': f'Nivel {jogador.cadencia_nivel} -> UPGRADE PRO NIVEL {jogador.cadencia_nivel + 1}',
+                'tipo': 'cadencia'
+            },
+            'atravessar': {
+                'nome': 'Perfuracao',
+                'descricao': f'Nivel {jogador.atravessar_nivel} -> UPGRADE PRO NIVEL {jogador.atravessar_nivel + 1}',
+                'tipo': 'atravessar'
+            },
+            'projeteis': {
+                'nome': 'Penetracao',
+                'descricao': f'Nivel {jogador.projeteis_nivel} -> UPGRADE PRO NIVEL {jogador.projeteis_nivel + 1}',
+                'tipo': 'projeteis'
+            },
+            'coleta': {
+                'nome': 'Ima de XP',
+                'descricao': f'Nivel {jogador.coleta_nivel} -> UPGRADE PRO NIVEL {jogador.coleta_nivel + 1}',
+                'tipo': 'coleta'
+            }
+        }
+        
+    def get_upgrades_habilidades(self, jogador):
+        """Retorna as habilidades especiais disponíveis"""
+        return {
+            'espada': {
+                'nome': 'Espada Orbital',
+                'descricao': f'Nivel {jogador.espada_nivel} -> UPGRADE PRO NIVEL {jogador.espada_nivel + 1}',
+                'tipo': 'espada'
+            },
+            'dash': {
+                'nome': 'Dash Temporal',
+                'descricao': f'Nivel {jogador.dash_nivel} -> UPGRADE PRO NIVEL {jogador.dash_nivel + 1}',
+                'tipo': 'dash'
+            },
+            'bomba': {
+                'nome': 'Bomba Automatica',
+                'descricao': f'Nivel {jogador.bomba_nivel} -> UPGRADE PRO NIVEL {jogador.bomba_nivel + 1}',
+                'tipo': 'bomba'
+            },
+            'raios': {
+                'nome': 'Raios Tempestade',
+                'descricao': f'Nivel {jogador.raios_nivel} -> UPGRADE PRO NIVEL {jogador.raios_nivel + 1}',
+                'tipo': 'raios'
+            },
+            'campo': {
+                'nome': 'Campo Gravitacional',
+                'descricao': f'Nivel {jogador.campo_nivel} -> UPGRADE PRO NIVEL {jogador.campo_nivel + 1}',
+                'tipo': 'campo'
+            }
+        }
     
     def obter_opcoes_upgrade(self, jogador):
         """Gera 3 opções de upgrade para o jogador escolher - sem repetições"""
@@ -193,88 +183,37 @@ class UpgradeManager:
     
     def criar_carta_upgrade(self, tipo, jogador):
         """Cria uma carta de upgrade baseada no tipo"""
-        cartas_info = {
-            'vida': {
-                'id': 'vida',
-                'nome': '❤️ Vida Extra',
-                'descricao': f'+20 HP máximo (Nível {jogador.vida_nivel + 1})',
-                'tipo': 'vida'
-            },
-            'dano': {
-                'id': 'dano', 
-                'nome': '⚔️ Força',
-                'descricao': f'+3 de dano (Nível {jogador.dano_nivel + 1})',
-                'tipo': 'dano'
-            },
-            'velocidade': {
-                'id': 'velocidade',
-                'nome': '💨 Velocidade',
-                'descricao': f'+15% velocidade (Nível {jogador.velocidade_nivel + 1})',
-                'tipo': 'velocidade'
-            },
-            'alcance': {
-                'id': 'alcance',
-                'nome': '🎯 Alcance',
-                'descricao': f'+25% alcance (Nível {jogador.alcance_nivel + 1})',
-                'tipo': 'alcance'
-            },
-            'cadencia': {
-                'id': 'cadencia',
-                'nome': '⚡ Cadência',
-                'descricao': f'+20% velocidade ataque (Nível {jogador.cadencia_nivel + 1})',
-                'tipo': 'cadencia'
-            },
-            'atravessar': {
-                'id': 'atravessar',
-                'nome': '🔥 Penetração',
-                'descricao': f'+1 inimigo atravessado (Nível {jogador.atravessar_nivel + 1})',
-                'tipo': 'atravessar'
-            },
-            'projeteis': {
-                'id': 'projeteis',
-                'nome': '🔫 Múltiplos Tiros',
-                'descricao': f'+1 projétil (Nível {jogador.projeteis_nivel + 1})',
-                'tipo': 'projeteis'
-            },
-            'coleta': {
-                'id': 'coleta',
-                'nome': '🧲 Magnetismo XP',
-                'descricao': f'+30px raio coleta (Nível {jogador.coleta_nivel + 1})',
-                'tipo': 'coleta'
-            },
-            'espada': {
-                'id': 'espada',
-                'nome': '⚔️ Espada Orbital',
-                'descricao': f'Espada que orbita e ataca (Nível {jogador.espada_nivel + 1})',
-                'tipo': 'espada'
-            },
-            'dash': {
-                'id': 'dash',
-                'nome': '⚡ Dash Temporal',
-                'descricao': f'Movimento rápido + invulnerável (Nível {jogador.dash_nivel + 1})',
-                'tipo': 'dash'
-            },
-            'bomba': {
-                'id': 'bomba',
-                'nome': '💥 Bomba Automática',
-                'descricao': f'Bombas automáticas (Nível {jogador.bomba_nivel + 1})',
-                'tipo': 'bomba'
-            },
-            'raios': {
-                'id': 'raios',
-                'nome': '⚡ Raios Tempestade',
-                'descricao': f'Raios automáticos (Nível {jogador.raios_nivel + 1})',
-                'tipo': 'raios'
-            },
-            'campo': {
-                'id': 'campo',
-                'nome': '🌀 Campo Gravitacional',
-                'descricao': f'Atrai e danifica inimigos (Nível {jogador.campo_nivel + 1})',
-                'tipo': 'campo'
-            }
-        }
+        # Usar os métodos que já criei para obter as informações corretas
+        upgrades_basicos = self.get_upgrades_basicos(jogador)
+        upgrades_habilidades = self.get_upgrades_habilidades(jogador)
         
-        return cartas_info.get(tipo)
+        # Primeiro verificar nos básicos
+        if tipo in upgrades_basicos:
+            info = upgrades_basicos[tipo]
+            return {
+                'id': tipo,
+                'nome': info['nome'],
+                'descricao': info['descricao'],
+                'tipo': tipo
+            }
+        
+        # Depois verificar nas habilidades
+        if tipo in upgrades_habilidades:
+            info = upgrades_habilidades[tipo]
+            return {
+                'id': tipo,
+                'nome': info['nome'],
+                'descricao': info['descricao'],
+                'tipo': tipo
+            }
+        
+        # Fallback para tipos não encontrados
+        return {
+            'id': tipo,
+            'nome': f'Upgrade {tipo.title()}',
+            'descricao': f'Melhora {tipo}',
+            'tipo': tipo
+        }
     
     def gerar_carta_fallback(self, jogador):
         """Gera uma carta de fallback - sempre dano ou vida"""
@@ -287,92 +226,92 @@ class UpgradeManager:
         cartas_lendarias = {
             'vida_lendaria': {
                 'id': 'vida_lendaria',
-                'nome': '💎 CORAÇÃO DOURADO',
-                'descricao': '+100 HP máximo + Regeneração contínua',
+                'nome': 'CORACAO DOURADO',
+                'descricao': '+100 HP maximo + Regeneracao continua',
                 'tipo': 'vida_lendaria',
                 'raridade': 'lendaria'
             },
             'dano_lendaria': {
                 'id': 'dano_lendaria', 
-                'nome': '💎 FORÇA SUPREMA',
-                'descricao': '+200% de dano + 25% chance crítico',
+                'nome': 'FORCA SUPREMA',
+                'descricao': '+200% de dano + 25% chance critico',
                 'tipo': 'dano_lendaria',
                 'raridade': 'lendaria'
             },
             'velocidade_lendaria': {
                 'id': 'velocidade_lendaria',
-                'nome': '💎 VENTO DIVINO', 
+                'nome': 'VENTO DIVINO', 
                 'descricao': '+150% velocidade + Clone fantasma',
                 'tipo': 'velocidade_lendaria',
                 'raridade': 'lendaria'
             },
             'alcance_lendaria': {
                 'id': 'alcance_lendaria',
-                'nome': '💎 PRECISÃO INFINITA',
+                'nome': 'PRECISAO INFINITA',
                 'descricao': '+300% alcance + Atravessa infinito',
                 'tipo': 'alcance_lendaria',
                 'raridade': 'lendaria'
             },
             'cadencia_lendaria': {
                 'id': 'cadencia_lendaria',
-                'nome': '💎 RAJADA ETERNA',
-                'descricao': '+400% cadência + Tiros triplos',
+                'nome': 'RAJADA ETERNA',
+                'descricao': '+400% cadencia + Tiros triplos',
                 'tipo': 'cadencia_lendaria',
                 'raridade': 'lendaria'
             },
             'atravessar_lendaria': {
                 'id': 'atravessar_lendaria',
-                'nome': '💎 PERFURAÇÃO CÓSMICA',
+                'nome': 'PERFURACAO COSMICA',
                 'descricao': 'Atravessa infinito + Dano cumulativo',
                 'tipo': 'atravessar_lendaria',
                 'raridade': 'lendaria'
             },
             'projeteis_lendaria': {
                 'id': 'projeteis_lendaria',
-                'nome': '💎 CHUVA DE METEOROS',
-                'descricao': '+5 projéteis + Padrão espiral 360°',
+                'nome': 'CHUVA DE METEOROS',
+                'descricao': '+5 projeteis + Padrao espiral 360 graus',
                 'tipo': 'projeteis_lendaria',
                 'raridade': 'lendaria'
             },
             'coleta_lendaria': {
                 'id': 'coleta_lendaria',
-                'nome': '💎 MAGNETISMO ABSOLUTO',
-                'descricao': 'Atração tela inteira + XP dobrado',
+                'nome': 'MAGNETISMO ABSOLUTO',
+                'descricao': 'Atracao tela inteira + XP dobrado',
                 'tipo': 'coleta_lendaria',
                 'raridade': 'lendaria'
             },
             'espada_lendaria': {
                 'id': 'espada_lendaria',
-                'nome': '💎 LÂMINAS DO CAOS',
+                'nome': 'LAMINAS DO CAOS',
                 'descricao': '+3 espadas + Ondas de choque',
                 'tipo': 'espada_lendaria',
                 'raridade': 'lendaria'
             },
             'dash_lendaria': {
                 'id': 'dash_lendaria',
-                'nome': '💎 TELETRANSPORTE',
-                'descricao': 'Sem cooldown + Explosão ao chegar',
+                'nome': 'TELETRANSPORTE',
+                'descricao': 'Sem cooldown + Explosao ao chegar',
                 'tipo': 'dash_lendaria',
                 'raridade': 'lendaria'
             },
             'bomba_lendaria': {
                 'id': 'bomba_lendaria',
-                'nome': '💎 APOCALIPSE',
+                'nome': 'APOCALIPSE',
                 'descricao': 'Bombas nucleares + Efeito cadeia',
                 'tipo': 'bomba_lendaria',
                 'raridade': 'lendaria'
             },
             'raios_lendaria': {
                 'id': 'raios_lendaria',
-                'nome': '💎 TEMPESTADE ETERNA',
+                'nome': 'TEMPESTADE ETERNA',
                 'descricao': 'Tempestade permanente + Raios saltadores',
                 'tipo': 'raios_lendaria',
                 'raridade': 'lendaria'
             },
             'campo_lendaria': {
                 'id': 'campo_lendaria',
-                'nome': '💎 BURACO NEGRO',
-                'descricao': 'Campo massivo + Dano contínuo extremo',
+                'nome': 'BURACO NEGRO',
+                'descricao': 'Campo massivo + Dano continuo extremo',
                 'tipo': 'campo_lendaria',
                 'raridade': 'lendaria'
             }

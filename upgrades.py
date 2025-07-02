@@ -169,12 +169,10 @@ class TelaUpgrade:
         overlay.fill((10, 10, 30))  # Azul escuro
         tela.blit(overlay, (0, 0))
         
-        # Título com efeito brilhante
-        titulo_y = 150
-        for offset in [(0, 0), (-2, -2), (2, 2)]:
-            cor = DOURADO if offset == (0, 0) else PRETO
-            desenhar_texto(tela, "✨ LEVEL UP! Escolha um upgrade ✨", 
-                          (LARGURA_TELA // 2 - 200 + offset[0], titulo_y + offset[1]), cor, 36)
+        # Título principal
+        desenhar_texto(tela, "VOCE SUBIU DE NIVEL! Escolha um upgrade",
+                      (LARGURA_TELA // 2, 80), DOURADO, 48, 
+                      centralizado=True, sombra=True)
         
         # Desenhar cartas com efeitos melhorados
         for i, opcao in enumerate(self.opcoes):
@@ -256,10 +254,10 @@ class TelaUpgrade:
             if opcao.get('nivel_atual', -1) >= 0:
                 nivel = opcao.get('nivel_atual', 0) + 1
                 if nivel == 5:
-                    nome += " ⭐ MAX"
+                    nome += " MAX"
                     cor_nome = DOURADO
                 else:
-                    nome += f" ★{nivel}"
+                    nome += f" [{nivel}]"
                     cor_nome = BRANCO
             else:
                 cor_nome = BRANCO
@@ -286,5 +284,5 @@ class TelaUpgrade:
         instrucoes_y = ALTURA_TELA - 80
         for offset in [(0, 0), (-1, -1)]:
             cor = BRANCO if offset == (0, 0) else PRETO
-            desenhar_texto(tela, "🖱️ Clique na carta ou pressione 1/2/3 ⌨️", 
+            desenhar_texto(tela, "Clique na carta ou pressione 1/2/3", 
                           (LARGURA_TELA // 2 - 200 + offset[0], instrucoes_y + offset[1]), cor, 18) 

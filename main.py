@@ -15,10 +15,75 @@ from itens import Item
 from boss import Boss, ProjetilBoss
 from inimigo import gerar_inimigo_aleatorio
 from itens import gerar_item_aleatorio, usar_item_xp_magnetico, usar_item_bomba_tela, usar_item_coracao
+import os
 
 class Jogo:
     def __init__(self):
         pygame.init()
+        
+        # Inicializar sistema de áudio
+        pygame.mixer.init()
+        
+        # Controle de volume (definir antes de qualquer som)
+        self.volume_atual = 0.3  # Volume inicial (30%)
+        self.mostrar_controle_volume = False
+        self.tempo_ultimo_mouse_volume = 0
+        self.arrastando_volume = False
+        
+        # Carregar sons
+        try:
+            self.som_boss_spawn = pygame.mixer.Sound("assets/boss-spawn.mp3")
+            self.som_boss_spawn.set_volume(self.volume_atual)  # Definir volume inicial
+        except Exception as e:
+            print(f"Aviso: Não foi possível carregar o som boss-spawn.mp3: {e}")
+            self.som_boss_spawn = None
+        
+        # Carregar música inicial
+        try:
+            self.caminho_musica_inicial = "assets/ost1.mp3"
+            pygame.mixer.music.load(self.caminho_musica_inicial)
+            pygame.mixer.music.set_volume(self.volume_atual)
+            pygame.mixer.music.play(0)  # Tocar apenas uma vez (0 = sem repetição)
+            print("Música inicial iniciada!")
+        except Exception as e:
+            print(f"Aviso: Não foi possível carregar a música inicial: {e}")
+            self.caminho_musica_inicial = None
+        
+        # Carregar música do boss
+        try:
+            self.musica_boss_carregada = False
+            # Não carregar ainda, apenas marcar caminho
+            self.caminho_musica_boss = "assets/boss-theme.mp3"
+        except:
+            print("Aviso: Não foi possível encontrar boss-theme.mp3")
+            self.caminho_musica_boss = None
+        
+        # Carregar ícone de volume
+        try:
+            caminho_volume = "assets/volume.png"
+            print(f"Tentando carregar ícone de volume de: {caminho_volume}")
+            
+            # Verificar se o arquivo existe
+            if not os.path.exists(caminho_volume):
+                print(f"Arquivo não encontrado: {caminho_volume}")
+                self.icone_volume_img = None
+            else:
+                img = pygame.image.load(caminho_volume)
+                print(f"Imagem carregada: {img.get_size()}")
+                
+                # Converter e escalar
+                if img.get_alpha() is None:
+                    img = img.convert()
+                else:
+                    img = img.convert_alpha()
+                self.icone_volume_img = pygame.transform.scale(img, (24, 24))
+                print("Ícone de volume carregado e escalado com sucesso!")
+        except Exception as e:
+            print(f"Erro ao carregar ícone de volume: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.icone_volume_img = None
+        
         self.tela = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
         pygame.display.set_caption("Vampire Survivors - Demo")
         self.clock = pygame.time.Clock()
@@ -81,6 +146,12 @@ class Jogo:
         """Retorna o tempo de jogo em segundos"""
         return (pygame.time.get_ticks() - self.inicio_jogo) / 1000.0
     
+    def obter_tempo_restante(self):
+        """Retorna o tempo restante em segundos (contagem regressiva)"""
+        tempo_jogado = self.obter_tempo_jogo()
+        tempo_restante = DURACAO_MAXIMA - tempo_jogado
+        return max(0, tempo_restante)  # Não deixar negativo
+    
     def atualizar_camera(self):
         """Atualiza a posição da câmera para seguir o jogador"""
         self.camera[0] = self.jogador.pos[0] - LARGURA_TELA // 2
@@ -101,6 +172,14 @@ class Jogo:
                 LARGURA_MAPA // 2 + random.randint(-200, 200),
                 ALTURA_MAPA // 2 + random.randint(-200, 200)
             )
+            
+            # Tocar som de spawn do boss
+            if self.som_boss_spawn:
+                self.som_boss_spawn.play()
+            
+            # Tocar música do boss
+            self.tocar_musica_boss()
+            
             # Limpar inimigos existentes para dar foco ao boss
             self.inimigos.clear()
             # Remover todo XP do chão
@@ -313,17 +392,25 @@ class Jogo:
         self.jogador.mover(keys)
         self.jogador.atualizar()
         
-        # Atualizar espadas orbitais com lista de inimigos
+        # Atualizar espadas orbitais com lista de inimigos e boss
+        alvos_espadas = list(self.inimigos)  # Começar com inimigos
+        if self.boss and self.boss.ativo:
+            alvos_espadas.append(self.boss)  # Adicionar boss se ativo
+            
         for espada in self.jogador.obter_espadas():
-            espada.atualizar(self.inimigos)
+            espada.atualizar(alvos_espadas)
         
         # Verificar se o jogador morreu
         if not self.jogador.esta_vivo():
             self.estado = "game_over"
             return
         
-        # Verificar vitória (boss morto)
-        if self.boss and not self.boss.ativo:
+        # Verificar se boss foi derrotado
+        if self.boss and self.boss.hp <= 0:
+            # Parar música do boss quando ele morrer
+            self.parar_musica_boss()
+            
+            self.boss = None
             self.estado = "vitoria"
             return
         
@@ -348,6 +435,8 @@ class Jogo:
             
             if self.boss.hp <= 0:
                 self.boss.ativo = False
+                # Parar música do boss quando ele morrer
+                self.parar_musica_boss()
                 self.estado = "vitoria"
         
         # Atualizar projéteis
@@ -390,6 +479,12 @@ class Jogo:
         
         # Processar colisões
         self.processar_colisoes()
+        
+        # Atualizar controle de volume (esconder após 3 segundos)
+        if self.mostrar_controle_volume:
+            tempo_atual = pygame.time.get_ticks()
+            if tempo_atual - self.tempo_ultimo_mouse_volume > 3000:  # 3 segundos
+                self.mostrar_controle_volume = False
     
     def desenhar(self):
         """Desenha todos os elementos do jogo"""
@@ -465,133 +560,195 @@ class Jogo:
         pygame.display.flip()
     
     def desenhar_ui(self):
-        """Desenha a interface do usuário com fontes melhoradas"""
-        # Fundo semi-transparente para UI
-        ui_fundo = pygame.Surface((300, 150))
-        ui_fundo.set_alpha(120)
-        ui_fundo.fill((0, 0, 0))
-        self.tela.blit(ui_fundo, (5, 5))
+        """Desenha a interface do usuário com design melhorado"""
         
-        # Barra de vida melhorada
-        desenhar_texto(self.tela, f"❤️ HP: {self.jogador.hp}/{self.jogador.hp_max}", 
-                      (15, 15), VERMELHO, 24, sombra=True)
+        # === PAINEL PRINCIPAL (Canto superior esquerdo) ===
+        largura_painel = 320
+        altura_painel = 160
         
-        # Level e XP com ícones
-        desenhar_texto(self.tela, f"⭐ Level: {self.jogador.level}", 
-                      (15, 45), DOURADO, 24, sombra=True)
-        desenhar_texto(self.tela, f"✨ XP: {self.jogador.xp}/{self.jogador.xp_para_proximo}", 
-                      (15, 75), AZUL_CLARO, 24, sombra=True)
+        # Fundo do painel principal com bordas arredondadas
+        painel_surf = pygame.Surface((largura_painel, altura_painel))
+        painel_surf.set_alpha(140)
+        painel_surf.fill((15, 20, 35))
+        self.tela.blit(painel_surf, (10, 10))
         
-        # Tempo de jogo com formatação corrigida
-        tempo = self.obter_tempo_jogo()
-        minutos = int(tempo // 60)
-        segundos = int(tempo % 60)
-        tempo_texto = f"⏰ Tempo: {minutos:02d}:{segundos:02d}"
+        # Borda dourada sutil
+        pygame.draw.rect(self.tela, (255, 215, 0), (10, 10, largura_painel, altura_painel), 2)
         
-        # Mudar cor quando se aproxima da arena do boss
-        if tempo >= 780:  # 13 minutos - aviso
+        # === VIDA ===
+        y_offset = 25
+        # Ícone de coração simulado
+        pygame.draw.circle(self.tela, VERMELHO, (30, y_offset), 8)
+        pygame.draw.circle(self.tela, VERMELHO, (42, y_offset), 8)
+        # Texto da vida
+        desenhar_texto(self.tela, f"{self.jogador.hp}/{self.jogador.hp_max}", 
+                      (60, y_offset - 8), BRANCO, 24, sombra=True)
+        
+        # Barra de vida visual
+        barra_largura = 200
+        barra_altura = 8
+        x_barra = 120
+        y_barra = y_offset - 4
+        
+        # Fundo da barra
+        pygame.draw.rect(self.tela, (50, 20, 20), (x_barra, y_barra, barra_largura, barra_altura))
+        
+        # Barra atual
+        proporcao_vida = self.jogador.hp / self.jogador.hp_max
+        largura_vida = int(barra_largura * proporcao_vida)
+        cor_vida = VERDE if proporcao_vida > 0.6 else (255, 165, 0) if proporcao_vida > 0.3 else VERMELHO
+        pygame.draw.rect(self.tela, cor_vida, (x_barra, y_barra, largura_vida, barra_altura))
+        
+        # === LEVEL E XP ===
+        y_offset += 35
+        # Ícone de estrela para level
+        desenhar_texto(self.tela, "★", (25, y_offset - 8), DOURADO, 20, sombra=True)
+        desenhar_texto(self.tela, f"Nível {self.jogador.level}", 
+                      (50, y_offset - 8), DOURADO, 22, sombra=True)
+        
+        # Barra de XP
+        y_offset += 25
+        desenhar_texto(self.tela, f"XP: {self.jogador.xp}/{self.jogador.xp_para_proximo}", 
+                      (25, y_offset - 8), AZUL_CLARO, 18, sombra=True)
+        
+        # Barra de XP visual
+        y_barra_xp = y_offset + 15
+        pygame.draw.rect(self.tela, (20, 30, 50), (25, y_barra_xp, barra_largura, 6))
+        proporcao_xp = self.jogador.xp / self.jogador.xp_para_proximo
+        largura_xp = int(barra_largura * proporcao_xp)
+        pygame.draw.rect(self.tela, AZUL_CLARO, (25, y_barra_xp, largura_xp, 6))
+        
+        # === TEMPO RESTANTE (Destaque especial) ===
+        y_offset += 45
+        tempo_restante = self.obter_tempo_restante()
+        minutos = int(tempo_restante // 60)
+        segundos = int(tempo_restante % 60)
+        
+        # Determinar cor baseada no tempo restante
+        if tempo_restante <= 60:  # Último minuto
             cor_tempo = VERMELHO
-            if tempo >= 840:  # 14 minutos - arena do boss
-                tempo_texto += " 🏟️ ARENA DO BOSS!"
+            tempo_texto = f"⚠ {minutos:02d}:{segundos:02d} ⚠"
+        elif tempo_restante <= 180:  # Últimos 3 minutos
+            cor_tempo = (255, 165, 0)  # Laranja
+            tempo_texto = f"⏰ {minutos:02d}:{segundos:02d}"
         else:
             cor_tempo = BRANCO
-            
-        desenhar_texto(self.tela, tempo_texto, (15, 105), cor_tempo, 24, sombra=True)
+            tempo_texto = f"⏱ {minutos:02d}:{segundos:02d}"
         
-        # Coleta de XP se ativo
+        # Boss warning
+        if tempo_restante <= 0:
+            tempo_texto = "🔥 BOSS FIGHT! 🔥"
+            cor_tempo = VERMELHO
+        
+        desenhar_texto(self.tela, tempo_texto, (25, y_offset - 8), cor_tempo, 26, sombra=True)
+        
+        # === HABILIDADES (Lado direito melhorado) ===
+        x_habilidades = LARGURA_TELA - 300
+        y_base = 15
+        
+        # Painel de habilidades
+        largura_hab = 285
+        altura_hab = 220
+        hab_surf = pygame.Surface((largura_hab, altura_hab))
+        hab_surf.set_alpha(140)
+        hab_surf.fill((15, 25, 15))
+        self.tela.blit(hab_surf, (x_habilidades, y_base))
+        
+        # Borda verde para habilidades
+        pygame.draw.rect(self.tela, (100, 255, 100), (x_habilidades, y_base, largura_hab, altura_hab), 2)
+        
+        # Título das habilidades
+        desenhar_texto(self.tela, "⚔ HABILIDADES ⚔", (x_habilidades + 20, y_base + 15), 
+                      (100, 255, 100), 18, sombra=True)
+        y_hab = y_base + 45
+        
+        # Dash
+        if self.jogador.dash_nivel > 0:
+            icone = "💨" if self.jogador.dash_cooldown == 0 else "⏳"
+            if self.jogador.dash_cooldown > 0:
+                texto = f"{icone} Dash: {self.jogador.dash_cooldown//1000 + 1}s"
+                cor = (255, 100, 100)
+            else:
+                texto = f"{icone} Dash: PRONTO"
+                cor = (100, 255, 100)
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            y_hab += 22
+        
+        # Espada orbital
+        if self.jogador.espada_nivel > 0:
+            texto = f"⚔ Espadas Orbitais Nv.{self.jogador.espada_nivel}"
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), 
+                          (255, 200, 100), 16, sombra=True)
+            y_hab += 22
+        
+        # Bomba automática
+        if self.jogador.bomba_nivel > 0:
+            tempo_bomba = max(0, 8000 - (self.jogador.bomba_nivel * 1000) - 
+                            (pygame.time.get_ticks() - self.jogador.ultimo_bomba_auto))
+            if tempo_bomba > 0:
+                texto = f"💣 Próxima Bomba: {tempo_bomba//1000 + 1}s"
+                cor = (255, 150, 50)
+            else:
+                texto = f"💣 Bomba Nv.{self.jogador.bomba_nivel}: PRONTA"
+                cor = (100, 255, 100)
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            y_hab += 22
+        
+        # Raios automáticos
+        if self.jogador.raios_nivel > 0:
+            tempo_raios = max(0, 6000 - (self.jogador.raios_nivel * 800) - 
+                            (pygame.time.get_ticks() - self.jogador.ultimo_raios_auto))
+            if tempo_raios > 0:
+                texto = f"⚡ Próximos Raios: {tempo_raios//1000 + 1}s"
+                cor = (255, 200, 50)
+            else:
+                texto = f"⚡ Raios Nv.{self.jogador.raios_nivel}: PRONTOS"
+                cor = (100, 255, 100)
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            y_hab += 22
+        
+        # Campo gravitacional
+        if self.jogador.campo_nivel > 0:
+            if self.jogador.campo_nivel >= 5:
+                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: MÁXIMO"
+                cor = (200, 100, 255)
+            else:
+                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: ATIVO"
+                cor = (150, 100, 255)
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            y_hab += 22
+        
+        # Coleta de XP
         if self.jogador.coleta_nivel > 0:
-            desenhar_texto(self.tela, f"🔮 Coleta Nv.{self.jogador.coleta_nivel}", 
-                          (15, 135), VERDE, 20, sombra=True)
+            texto = f"🧲 Magnetismo Nv.{self.jogador.coleta_nivel}"
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), 
+                          (100, 200, 255), 16, sombra=True)
+            y_hab += 22
         
-        # Barra de vida do boss se ativo
+        # === CONTROLES (Canto inferior direito, mais compacto) ===
+        y_controles = ALTURA_TELA - 85
+        controles_surf = pygame.Surface((280, 75))
+        controles_surf.set_alpha(120)
+        controles_surf.fill((25, 15, 35))
+        self.tela.blit(controles_surf, (x_habilidades, y_controles))
+        
+        # Borda roxa para controles
+        pygame.draw.rect(self.tela, (150, 100, 200), (x_habilidades, y_controles, 280, 75), 2)
+        
+        desenhar_texto(self.tela, "🎮 CONTROLES", (x_habilidades + 20, y_controles + 10), 
+                      (200, 150, 255), 16, sombra=True)
+        desenhar_texto(self.tela, "Mouse: Mirar/Atirar  •  WASD: Mover", 
+                      (x_habilidades + 20, y_controles + 30), BRANCO, 14, sombra=True)
+        if self.jogador.dash_nivel > 0:
+            desenhar_texto(self.tela, "ESPAÇO: Dash Temporal", 
+                          (x_habilidades + 20, y_controles + 50), BRANCO, 14, sombra=True)
+        
+        # === BARRA DO BOSS (se ativo) ===
         if self.boss and self.boss.ativo:
             self.desenhar_barra_boss()
         
-        # Painel de habilidades (lado direito) melhorado
-        x_habilidades = LARGURA_TELA - 280
-        y_base = 15
-        
-        # Fundo do painel de habilidades
-        painel_hab = pygame.Surface((270, 200))
-        painel_hab.set_alpha(120)
-        painel_hab.fill((0, 0, 0))
-        self.tela.blit(painel_hab, (x_habilidades - 5, y_base - 5))
-        
-        desenhar_texto(self.tela, "🔥 HABILIDADES", (x_habilidades, y_base), 
-                      (255, 215, 0), 20, sombra=True)
-        y_base += 30
-        
-        # Dash (ESPAÇO) - única habilidade manual
-        if self.jogador.dash_nivel > 0:
-            if self.jogador.dash_cooldown > 0:
-                cor = VERMELHO
-                texto = f"⚡ Dash (ESPAÇO): {self.jogador.dash_cooldown//1000 + 1}s"
-            else:
-                cor = VERDE
-                texto = f"⚡ Dash (ESPAÇO): PRONTO ✓"
-            desenhar_texto(self.tela, texto, (x_habilidades, y_base), cor, 18, sombra=True)
-            y_base += 25
-        
-        # Espada (automática)
-        if self.jogador.espada_nivel > 0:
-            texto = f"⚔️ Espada Nv.{self.jogador.espada_nivel}: ATIVA ✓"
-            desenhar_texto(self.tela, texto, (x_habilidades, y_base), 
-                          (255, 165, 0), 18, sombra=True)
-            y_base += 25
-        
-        # Bomba (automática)
-        if self.jogador.bomba_nivel > 0:
-            tempo_restante = max(0, 8000 - (self.jogador.bomba_nivel * 1000) - 
-                               (pygame.time.get_ticks() - self.jogador.ultimo_bomba_auto))
-            if tempo_restante > 0:
-                texto = f"💥 Próxima Bomba: {tempo_restante//1000 + 1}s"
-                cor = VERMELHO
-            else:
-                texto = f"💥 Bomba Nv.{self.jogador.bomba_nivel}: PRONTA ✓"
-                cor = VERDE
-            desenhar_texto(self.tela, texto, (x_habilidades, y_base), cor, 18, sombra=True)
-            y_base += 25
-        
-        # Raios (automáticos)
-        if self.jogador.raios_nivel > 0:
-            tempo_restante = max(0, 6000 - (self.jogador.raios_nivel * 800) - 
-                               (pygame.time.get_ticks() - self.jogador.ultimo_raios_auto))
-            if tempo_restante > 0:
-                texto = f"⚡ Próximos Raios: {tempo_restante//1000 + 1}s"
-                cor = VERMELHO
-            else:
-                texto = f"⚡ Raios Nv.{self.jogador.raios_nivel}: PRONTOS ✓"
-                cor = VERDE
-            desenhar_texto(self.tela, texto, (x_habilidades, y_base), cor, 18, sombra=True)
-            y_base += 25
-        
-        # Campo gravitacional (sempre ativo)
-        if self.jogador.campo_nivel > 0:
-            if self.jogador.campo_nivel >= 5:
-                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: MÁXIMO ⭐"
-                cor = (200, 100, 255)
-            else:
-                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: ATIVO ✓"
-                cor = (150, 100, 255)
-            desenhar_texto(self.tela, texto, (x_habilidades, y_base), cor, 18, sombra=True)
-            y_base += 25
-        
-        # Instruções de controle modernas (canto inferior direito)
-        y_instrucoes = ALTURA_TELA - 80
-        instrucoes_fundo = pygame.Surface((280, 70))
-        instrucoes_fundo.set_alpha(100)
-        instrucoes_fundo.fill((0, 0, 0))
-        self.tela.blit(instrucoes_fundo, (x_habilidades - 5, y_instrucoes - 5))
-        
-        desenhar_texto(self.tela, "🎮 CONTROLES", (x_habilidades, y_instrucoes), 
-                      (255, 215, 0), 18, sombra=True)
-        desenhar_texto(self.tela, "🖱️ Mouse - Atirar", (x_habilidades, y_instrucoes + 20), 
-                      BRANCO, 16, sombra=True)
-        desenhar_texto(self.tela, "⌨️ WASD - Mover", (x_habilidades, y_instrucoes + 40), 
-                      BRANCO, 16, sombra=True)
-        if self.jogador.dash_nivel > 0:
-            desenhar_texto(self.tela, "⚡ ESPAÇO - Dash", (x_habilidades, y_instrucoes + 60), 
-                          AZUL_CLARO, 16, sombra=True)
+        # === CONTROLE DE VOLUME ===
+        self.desenhar_controle_volume()
     
     def desenhar_game_over(self):
         """Desenha a tela de game over"""
@@ -709,6 +866,13 @@ class Jogo:
                                     LARGURA_MAPA // 2 + random.randint(-200, 200),
                                     ALTURA_MAPA // 2 + random.randint(-200, 200)
                                 )
+                                
+                                # Tocar som de spawn do boss
+                                if self.som_boss_spawn:
+                                    self.som_boss_spawn.play()
+                                
+                                # Tocar música do boss
+                                self.tocar_musica_boss()
                         
                         elif evento.key == pygame.K_F6:
                             # Curar completamente
@@ -730,6 +894,43 @@ class Jogo:
                     self.upgrade_manager.aplicar_upgrade(self.jogador, upgrade_escolhido)
                     self.tela_upgrade = None
                     self.estado = "jogando"
+            
+            # Processar eventos do controle de volume
+            if self.estado == "jogando":
+                if evento.type == pygame.MOUSEBUTTONDOWN:
+                    if evento.button == 1:  # Botão esquerdo
+                        # Verificar se clicou na barra de volume
+                        if self.mostrar_controle_volume:
+                            x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
+                            mouse_x, mouse_y = evento.pos
+                            if (x_barra <= mouse_x <= x_barra + largura_barra and 
+                                y_barra - 5 <= mouse_y <= y_barra + 15):
+                                self.arrastando_volume = True
+                                # Calcular novo volume baseado na posição do clique
+                                proporcao = (mouse_x - x_barra) / largura_barra
+                                self.atualizar_volume(proporcao)
+                
+                elif evento.type == pygame.MOUSEBUTTONUP:
+                    if evento.button == 1:  # Botão esquerdo
+                        self.arrastando_volume = False
+                
+                elif evento.type == pygame.MOUSEMOTION:
+                    # Verificar se o mouse está sobre o ícone de volume
+                    x_icone, y_icone = self.obter_posicao_icone_volume()
+                    mouse_x, mouse_y = evento.pos
+                    
+                    # Área do ícone de volume (20x20 pixels)
+                    if (x_icone <= mouse_x <= x_icone + 20 and 
+                        y_icone <= mouse_y <= y_icone + 20):
+                        self.mostrar_controle_volume = True
+                        self.tempo_ultimo_mouse_volume = pygame.time.get_ticks()
+                    
+                    # Se estiver arrastando o volume
+                    if self.arrastando_volume and self.mostrar_controle_volume:
+                        x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
+                        if x_barra <= mouse_x <= x_barra + largura_barra:
+                            proporcao = (mouse_x - x_barra) / largura_barra
+                            self.atualizar_volume(proporcao)
         
         return True
     
@@ -807,6 +1008,12 @@ class Jogo:
                         if xp:
                             self.xps.append(xp)
                         self.inimigos.remove(inimigo)
+            
+            # Espadas orbitais vs Boss
+            if self.boss and self.boss.ativo:
+                if espada.colidir_com_inimigo(self.boss):
+                    # Boss recebe dano mas não morre como inimigo normal
+                    pass  # Dano já aplicado no método colidir_com_inimigo
         
         # Raios vs Inimigos
         for raio in self.raios:
@@ -872,9 +1079,9 @@ class Jogo:
         if largura_vida > 0:
             pygame.draw.rect(self.tela, cor_vida, (x_barra, y_barra, largura_vida, altura_barra))
         
-        # Texto do boss
-        texto_boss = f"👹 BOSS: {self.boss.hp}/{self.boss.hp_max} HP"
-        desenhar_texto(self.tela, texto_boss, (x_barra + largura_barra // 2 - 100, y_barra - 30), 
+        # Texto do boss (sem números de HP)
+        texto_boss = "BOSS"
+        desenhar_texto(self.tela, texto_boss, (x_barra + largura_barra // 2 - 50, y_barra - 30), 
                       VERMELHO, 24, sombra=True)
 
     def atualizar_inimigos(self):
@@ -931,7 +1138,7 @@ class Jogo:
         pygame.draw.rect(self.tela, (50, 50, 50), (x_msg, y_msg, largura_msg, altura_msg))
         pygame.draw.rect(self.tela, DOURADO, (x_msg, y_msg, largura_msg, altura_msg), 3)
         
-        desenhar_texto(self.tela, "🎉 TODOS OS UPGRADES COLETADOS! 🎉", 
+        desenhar_texto(self.tela, "TODOS OS UPGRADES COLETADOS!", 
                       (LARGURA_TELA // 2 - 200, ALTURA_TELA // 2 - 50), DOURADO, 36, sombra=True)
         desenhar_texto(self.tela, "Você é imbatível!", 
                       (LARGURA_TELA // 2 - 80, ALTURA_TELA // 2), VERDE, 24, sombra=True)
@@ -947,7 +1154,7 @@ class Jogo:
                           (10, 30), BRANCO, 14)
             # Mostrar status de vida infinita
             if self.jogador.vida_infinita:
-                desenhar_texto(self.tela, "🛡️ VIDA INFINITA ATIVA", (10, 50), VERDE, 16)
+                desenhar_texto(self.tela, "VIDA INFINITA ATIVA", (10, 50), VERDE, 16)
             return
             
         # Menu completo
@@ -966,7 +1173,7 @@ class Jogo:
         pygame.draw.rect(self.tela, DOURADO, (x_menu, y_menu, largura_menu, altura_menu), 3)
         
         # Título
-        desenhar_texto(self.tela, "🎮 MENU DESENVOLVEDOR 🎮", 
+        desenhar_texto(self.tela, "MENU DESENVOLVEDOR", 
                       (x_menu + largura_menu // 2 - 140, y_menu + 20), DOURADO, 24)
         
         y_atual = y_menu + 60
@@ -1004,6 +1211,103 @@ class Jogo:
         y_atual += 20
         desenhar_texto(self.tela, f"Boss: {'Ativo' if self.boss and self.boss.ativo else 'Inativo'} | Inimigos: {len(self.inimigos)}", 
                       (x_menu + 20, y_atual), BRANCO, 16)
+
+    def tocar_musica_boss(self):
+        """Inicia a música de fundo do boss com volume ajustado"""
+        if self.caminho_musica_boss and not self.musica_boss_carregada:
+            try:
+                pygame.mixer.music.stop()  # Parar música atual
+                pygame.mixer.music.unload()  # Descarregar música atual
+                pygame.mixer.music.load(self.caminho_musica_boss)
+                pygame.mixer.music.set_volume(self.volume_atual)  # Usar volume configurável
+                pygame.mixer.music.play(-1)  # Loop infinito
+                self.musica_boss_carregada = True
+                print("Música do boss iniciada!")
+            except Exception as e:
+                print(f"Erro ao carregar música do boss: {e}")
+    
+    def parar_musica_boss(self):
+        """Para a música do boss"""
+        if self.musica_boss_carregada:
+            pygame.mixer.music.stop()
+            self.musica_boss_carregada = False
+            print("Música do boss parada!")
+
+    def atualizar_volume(self, novo_volume):
+        """Atualiza o volume de todos os sons do jogo"""
+        self.volume_atual = max(0.0, min(1.0, novo_volume))  # Limitar entre 0 e 1
+        
+        # Atualizar volume da música atual
+        pygame.mixer.music.set_volume(self.volume_atual)
+        
+        # Atualizar volume dos efeitos sonoros
+        if self.som_boss_spawn:
+            self.som_boss_spawn.set_volume(self.volume_atual)
+
+    def obter_posicao_icone_volume(self):
+        """Retorna a posição do ícone de volume"""
+        return (20, ALTURA_TELA - 50)  # Canto inferior esquerdo
+    
+    def obter_posicao_barra_volume(self):
+        """Retorna a posição e tamanho da barra de volume"""
+        x_icone, y_icone = self.obter_posicao_icone_volume()
+        x_barra = x_icone + 30   # Barra à direita do ícone
+        y_barra = y_icone + 5    # Centralizada verticalmente com o ícone
+        largura_barra = 80
+        return x_barra, y_barra, largura_barra
+    
+    def desenhar_controle_volume(self):
+        """Desenha o ícone de volume e a barra se necessário"""
+        x_icone, y_icone = self.obter_posicao_icone_volume()
+        
+        # Determinar ícone baseado no volume
+        if self.volume_atual == 0:
+            icone = "🔇"  # Mudo
+        elif self.volume_atual < 0.3:
+            icone = "🔈"  # Volume baixo
+        elif self.volume_atual < 0.7:
+            icone = "🔉"  # Volume médio
+        else:
+            icone = "🔊"  # Volume alto
+        
+        # Desenhar ícone
+        if self.icone_volume_img:
+            self.tela.blit(self.icone_volume_img, (x_icone, y_icone))
+        else:
+            desenhar_texto(self.tela, icone, (x_icone, y_icone), BRANCO, 20, sombra=True)
+        
+        # Desenhar barra se o mouse estiver sobre o ícone
+        if self.mostrar_controle_volume:
+            x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
+            altura_barra = 10
+            
+            # Fundo da barra
+            fundo_surf = pygame.Surface((largura_barra + 10, altura_barra + 10))
+            fundo_surf.set_alpha(180)
+            fundo_surf.fill((20, 20, 30))
+            self.tela.blit(fundo_surf, (x_barra - 5, y_barra - 5))
+            
+            # Borda da barra
+            pygame.draw.rect(self.tela, BRANCO, (x_barra - 5, y_barra - 5, 
+                           largura_barra + 10, altura_barra + 10), 2)
+            
+            # Fundo da barra de volume (cinza escuro)
+            pygame.draw.rect(self.tela, (60, 60, 60), (x_barra, y_barra, largura_barra, altura_barra))
+            
+            # Barra de volume atual (verde para bom volume, vermelho para mudo)
+            largura_volume = int(largura_barra * self.volume_atual)
+            if largura_volume > 0:
+                cor_volume = VERDE if self.volume_atual > 0.1 else VERMELHO
+                pygame.draw.rect(self.tela, cor_volume, (x_barra, y_barra, largura_volume, altura_barra))
+            
+            # Indicador do cursor (linha vertical)
+            cursor_x = x_barra + int(largura_barra * self.volume_atual)
+            pygame.draw.line(self.tela, BRANCO, (cursor_x, y_barra - 2), (cursor_x, y_barra + altura_barra + 2), 3)
+            
+            # Texto do volume (porcentagem)
+            volume_texto = f"{int(self.volume_atual * 100)}%"
+            desenhar_texto(self.tela, volume_texto, (x_barra + largura_barra + 15, y_barra - 2), 
+                         BRANCO, 14, sombra=True)
 
 if __name__ == "__main__":
     jogo = Jogo()
