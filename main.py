@@ -12,20 +12,1154 @@ from upgrade_manager import UpgradeManager
 from habilidades import Raio, Bomba, CampoGravitacional, CampoPermanente
 from minimapa import Minimapa
 from itens import Item
-from boss import Boss, ProjetilBoss
 from inimigo import gerar_inimigo_aleatorio
 from itens import gerar_item_aleatorio, usar_item_xp_magnetico, usar_item_bomba_tela, usar_item_coracao
 import os
+
+class Boss:
+    def __init__(self, x, y):
+        self.pos = [x, y]
+        self.raio = 30
+        self.velocidade = 1.0
+        self.hp_max = 500000
+        self.hp = self.hp_max
+        self.hp_fase2 = self.hp_max * 0.6  # 60% do HP
+        self.hp_fase3 = self.hp_max * 0.3  # 30% do HP
+        self.fase = 1
+        self.ativo = True
+        self.cor = VERMELHO
+        self.projeteis = []
+        self.indicadores = []
+        self.ataque_atual = None
+        self.tempo_ultimo_ataque = 0
+        self.intervalo_ataque = 8000  # 8 segundos na fase 1
+        self.bullet_hell_ativo = False
+        self.bullet_hell_tempo = 0
+        self.bullet_hell_duracao = 8000  # 8 segundos de bullet hell
+        self.bullet_hell_padrao = 0
+        self.bullet_hell_ultimo_tiro = 0
+        self.bullet_hell_intervalo = 150  # Aumentado de 100 para 150ms entre tiros
+        self.ultimo_ataque_usado = None
+        self.ataques_consecutivos = 0
+        self.dano = 15  # Reduzido de 20 para 15
+        self.invulneravel = False
+        
+        # Controle de ataques
+        self.tempo_execucao = 0
+        self.tempo_aviso = 0
+        self.indicadores_area = []
+        
+        # Controle do bullet hell
+        self.bullet_hell_intervalo = 100  # 0.1 segundo entre padrões
+        
+        # Controle de movimento
+        self.destino = None
+        self.tempo_movimento = 0
+        self.duracao_movimento = 0
+        self.pos_inicial_movimento = None
+        
+        # Controle de ataques especiais
+        self.ataque_rajada_laser = self._ataque_rajada_laser
+        self.ataque_meteoros = self._ataque_meteoros
+        self.ataque_espinhos = self._ataque_espinhos
+        self.ataque_laser_varredor = self._ataque_laser_varredor
+        self.ataque_explosao_infernal = self._ataque_explosao_infernal
+        self.ataque_teleporte = self._ataque_teleporte
+        self.ataque_apocalipse = self._ataque_apocalipse
+        self.ataque_vortice = self._ataque_vortice
+        self.ataque_furia = self._ataque_furia
+    
+    def determinar_fase(self):
+        """Determina a fase atual do boss baseado no HP"""
+        fase_anterior = self.fase
+        
+        if self.hp <= self.hp_fase3:
+            if not self.bullet_hell_ativo and self.fase < 3:
+                # Iniciar bullet hell ao entrar na fase 3
+                self.bullet_hell_ativo = True
+                self.bullet_hell_tempo = pygame.time.get_ticks()
+                self.bullet_hell_padrao = 0
+                print("Boss entrando na Fase 3!")
+            return 3
+        elif self.hp <= self.hp_fase2:
+            if self.fase < 2:
+                print("Boss entrando na Fase 2!")
+            return 2
+        
+        if self.fase > 1:
+            print("Boss voltando para Fase 1!")
+        return 1
+    
+    def obter_ataques_disponiveis(self):
+        """Retorna lista de ataques disponíveis baseado na fase com suas probabilidades"""
+        ataques = []
+        
+        # Fase 1 - Ataques mais simples
+        if self.fase == 1:
+            ataques.extend([
+                # Ataques básicos (60% chance total)
+                {"nome": "basico", "chance": 15},
+                {"nome": "tiro_duplo", "chance": 15},
+                {"nome": "tiro_triplo", "chance": 15},
+                {"nome": "tiro_angular", "chance": 15},
+                
+                # Ataques fortes (30% chance total)
+                {"nome": "espiral_simples", "chance": 15},
+                {"nome": "onda_circular", "chance": 15},
+                
+                # Ataque devastador (10% chance)
+                {"nome": "explosao_anel", "chance": 10}
+            ])
+        
+        # Fase 2 - Ataques médios
+        elif self.fase == 2:
+            ataques.extend([
+                # Ataques básicos (50% chance total)
+                {"nome": "tiro_rapido", "chance": 15},
+                {"nome": "tiro_perseguidor", "chance": 10},
+                {"nome": "tiro_espalhado", "chance": 15},
+                {"nome": "rajada_laser", "chance": 10},
+                
+                # Ataques fortes (35% chance total)
+                {"nome": "meteoros", "chance": 20},
+                {"nome": "laser_varredor", "chance": 15},
+                
+                # Ataque devastador (15% chance)
+                {"nome": "explosao_infernal", "chance": 15}
+            ])
+        
+        # Fase 3 - Ataques mais fortes
+        else:
+            ataques.extend([
+                # Ataques básicos (50% chance total)
+                {"nome": "tiro_rapido", "chance": 15},
+                {"nome": "tiro_perseguidor", "chance": 15},
+                {"nome": "tiro_ricochete", "chance": 10},
+                {"nome": "tiro_espalhado", "chance": 10},
+                
+                # Ataques fortes (35% chance total)
+                {"nome": "vortice", "chance": 20},
+                {"nome": "meteoros", "chance": 15},
+                
+                # Ataque devastador (15% chance)
+                {"nome": "furia", "chance": 15}
+            ])
+        
+        return ataques
+    
+    def atualizar(self, jogador_pos):
+        """Atualiza estado do boss"""
+        if not self.ativo:
+            return
+        
+        # Atualizar fase e intervalo de ataque
+        nova_fase = self.determinar_fase()
+        if nova_fase != self.fase:
+            self.fase = nova_fase
+            # Ajustar intervalo de ataque baseado na fase
+            if self.fase == 1:
+                self.intervalo_ataque = 8000  # 8 segundos
+            elif self.fase == 2:
+                self.intervalo_ataque = 5000  # 5 segundos
+            else:
+                self.intervalo_ataque = 4000  # 4 segundos
+            self.tempo_ultimo_ataque = 0
+            print(f"Boss mudou para Fase {self.fase}! HP: {self.hp}/{self.hp_max}")
+        
+        tempo_atual = pygame.time.get_ticks()
+        
+        # Atualizar bullet hell se ativo
+        if self.bullet_hell_ativo:
+            if tempo_atual - self.bullet_hell_tempo >= self.bullet_hell_duracao:
+                self.bullet_hell_ativo = False
+                print("Bullet Hell terminou!")
+            else:
+                return self.atualizar_bullet_hell(jogador_pos)
+        
+        # Processar ataque atual
+        if self.ataque_atual:
+            self.tempo_execucao = tempo_atual - self.tempo_ultimo_ataque
+            if self.tempo_execucao >= min(2000, self.intervalo_ataque * 0.5):  # Máximo de 2 segundos ou metade do intervalo
+                self.ataque_atual = None
+                print("Ataque finalizado")
+            else:
+                return self.executar_ataque(jogador_pos)
+        
+        # Iniciar novo ataque
+        if tempo_atual - self.tempo_ultimo_ataque > self.intervalo_ataque:
+            print("\nIniciando novo ataque...")
+            return self.iniciar_ataque(jogador_pos)
+        
+        return []
+    
+    def atualizar_bullet_hell(self, jogador_pos):
+        """Atualiza o padrão bullet hell"""
+        tempo_atual = pygame.time.get_ticks()
+        novos_projeteis = []
+        
+        if tempo_atual - self.bullet_hell_ultimo_tiro >= self.bullet_hell_intervalo:
+            self.bullet_hell_ultimo_tiro = tempo_atual
+            self.bullet_hell_padrao = (self.bullet_hell_padrao + 1) % 4
+            
+            # Diferentes padrões de tiro
+            if self.bullet_hell_padrao == 0:
+                # Espiral
+                for i in range(8):
+                    angulo = (tempo_atual / 500.0) + (i * math.pi / 4)
+                    dx = math.cos(angulo)
+                    dy = math.sin(angulo)
+                    novos_projeteis.append(
+                        ProjetilBoss(self.pos[0], self.pos[1], 
+                                   self.pos[0] + dx, self.pos[1] + dy,
+                                   15, 3, (255, 0, 0))
+                    )
+            
+            elif self.bullet_hell_padrao == 1:
+                # Grade
+                for x in range(-2, 3):
+                    for y in range(-2, 3):
+                        if x == 0 and y == 0:
+                            continue
+                        novos_projeteis.append(
+                            ProjetilBoss(self.pos[0], self.pos[1],
+                                       self.pos[0] + x * 100, self.pos[1] + y * 100,
+                                       15, 2, (0, 255, 255))
+                        )
+            
+            elif self.bullet_hell_padrao == 2:
+                # Círculo expansivo
+                num_projeteis = 16
+                for i in range(num_projeteis):
+                    angulo = (i * 2 * math.pi / num_projeteis)
+                    dx = math.cos(angulo)
+                    dy = math.sin(angulo)
+                    novos_projeteis.append(
+                        ProjetilBoss(self.pos[0], self.pos[1],
+                                   self.pos[0] + dx, self.pos[1] + dy,
+                                   15, 4, (255, 255, 0))
+                    )
+            
+            else:
+                # Chuva de projéteis
+                for _ in range(10):
+                    x_alvo = random.randint(0, LARGURA_MAPA)
+                    novos_projeteis.append(
+                        ProjetilBoss(self.pos[0], self.pos[1],
+                                   x_alvo, ALTURA_MAPA,
+                                   15, 5, (255, 0, 255))
+                    )
+        
+        return novos_projeteis
+
+    def ataque_basico(self, jogador_pos):
+        """Ataque básico melhorado com mais projéteis"""
+        tempo_atual = pygame.time.get_ticks()
+        if tempo_atual - self.tempo_ultimo_ataque < 300:  # Intervalo entre rajadas
+            return []
+        
+        self.tempo_ultimo_ataque = tempo_atual
+        novos_projeteis = []
+        
+        # Aumentar número de projéteis baseado na fase
+        num_projeteis = 3 if self.fase == 1 else (5 if self.fase == 2 else 7)
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        for i in range(num_projeteis):
+            # Distribuir os tiros em leque
+            offset = (i - (num_projeteis - 1) / 2) * 0.2
+            angulo = angulo_base + offset
+            
+            dx = math.cos(angulo)
+            dy = math.sin(angulo)
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           self.dano, 4, (255, 0, 0))
+            )
+        
+        return novos_projeteis
+
+    def iniciar_ataque(self, jogador_pos):
+        """Inicia um novo ataque baseado nas probabilidades"""
+        ataques = self.obter_ataques_disponiveis()
+        
+        # Ajustar probabilidades para evitar repetição
+        if self.ultimo_ataque_usado:
+            for ataque in ataques:
+                if ataque["nome"] == self.ultimo_ataque_usado:
+                    # Reduz a chance do último ataque usado
+                    ataque["chance"] *= 0.5
+                    if self.ataques_consecutivos > 0:
+                        # Reduz ainda mais se já foi usado múltiplas vezes
+                        ataque["chance"] *= (0.5 ** self.ataques_consecutivos)
+        
+        # Escolher ataque baseado nas probabilidades
+        numero_aleatorio = random.random() * 100  # Número entre 0 e 100
+        soma_probabilidade = 0
+        ataque_escolhido = None
+        
+        # Debug: imprimir probabilidades
+        print(f"\nFase atual: {self.fase}")
+        print(f"Último ataque: {self.ultimo_ataque_usado} (usado {self.ataques_consecutivos} vezes)")
+        print(f"Número aleatório: {numero_aleatorio}")
+        
+        for ataque in ataques:
+            soma_probabilidade += ataque["chance"]
+            print(f"Testando {ataque['nome']} (chance: {ataque['chance']:.1f}%, soma: {soma_probabilidade:.1f}%)")
+            if numero_aleatorio <= soma_probabilidade and ataque_escolhido is None:
+                ataque_escolhido = ataque["nome"]
+                print(f"Escolhido: {ataque_escolhido}")
+                break
+        
+        # Fallback para ataque básico se algo der errado
+        if ataque_escolhido is None:
+            print("Fallback para ataque básico")
+            ataque_escolhido = "basico"
+        
+        # Atualizar contadores de repetição
+        if ataque_escolhido == self.ultimo_ataque_usado:
+            self.ataques_consecutivos += 1
+        else:
+            self.ataques_consecutivos = 0
+        
+        self.ultimo_ataque_usado = ataque_escolhido
+        self.ataque_atual = ataque_escolhido
+        self.tempo_ultimo_ataque = pygame.time.get_ticks()
+        self.tempo_execucao = 0
+        
+        # Criar indicadores de área se necessário
+        if self.ataque_atual != "basico":
+            self.criar_indicadores_area(jogador_pos, self.ataque_atual)
+    
+    def criar_indicadores_area(self, jogador_pos, tipo_ataque):
+        """Cria indicadores visuais para o ataque"""
+        self.indicadores_area = []
+        
+        if tipo_ataque in ["rajada_laser", "laser_varredor"]:
+            # Linha indicando direção do laser
+            self.indicadores_area.append({
+                "tipo": "linha",
+                "inicio": self.pos,
+                "fim": jogador_pos,
+                "cor": (255, 0, 0)
+            })
+        
+        elif tipo_ataque in ["meteoros", "apocalipse"]:
+            # Círculos indicando área de impacto
+            for _ in range(5):
+                x = random.randint(0, LARGURA_MAPA)
+                y = random.randint(0, ALTURA_MAPA)
+                self.indicadores_area.append({
+                    "tipo": "circulo",
+                    "pos": [x, y],
+                    "raio": 100,
+                    "cor": (255, 165, 0)
+                })
+        
+        elif tipo_ataque == "espinhos":
+            # Padrão circular ao redor do boss
+            self.indicadores_area.append({
+                "tipo": "circulo",
+                "pos": self.pos,
+                "raio": 200,
+                "cor": (255, 0, 255)
+            })
+    
+    def executar_ataque(self, jogador_pos):
+        """Executa o ataque atual"""
+        if not self.ataque_atual:
+            return []
+        
+        # Ataques básicos
+        if self.ataque_atual == "basico":
+            return self.ataque_basico(jogador_pos)
+        elif self.ataque_atual == "tiro_duplo":
+            return self._ataque_tiro_duplo(jogador_pos)
+        elif self.ataque_atual == "tiro_triplo":
+            return self._ataque_tiro_triplo(jogador_pos)
+        elif self.ataque_atual == "tiro_angular":
+            return self._ataque_tiro_angular(jogador_pos)
+        elif self.ataque_atual == "tiro_espalhado":
+            return self._ataque_tiro_espalhado(jogador_pos)
+        elif self.ataque_atual == "tiro_perseguidor":
+            return self._ataque_tiro_perseguidor(jogador_pos)
+        elif self.ataque_atual == "tiro_ricochete":
+            return self._ataque_tiro_ricochete(jogador_pos)
+        elif self.ataque_atual == "tiro_rapido":
+            return self._ataque_tiro_rapido(jogador_pos)
+        elif self.ataque_atual == "rajada_laser":
+            return self._ataque_rajada_laser(jogador_pos)
+        elif self.ataque_atual == "teleporte":
+            return self._ataque_teleporte(jogador_pos)
+        
+        # Ataques fortes
+        elif self.ataque_atual == "espiral_simples":
+            return self._ataque_espiral_simples(jogador_pos)
+        elif self.ataque_atual == "onda_circular":
+            return self._ataque_onda_circular(jogador_pos)
+        elif self.ataque_atual == "meteoros":
+            return self._ataque_meteoros(jogador_pos)
+        elif self.ataque_atual == "laser_varredor":
+            return self._ataque_laser_varredor(jogador_pos)
+        elif self.ataque_atual == "vortice":
+            return self._ataque_vortice(jogador_pos)
+        elif self.ataque_atual == "furia":
+            return self._ataque_furia(jogador_pos)
+        
+        # Ataques devastadores
+        elif self.ataque_atual == "explosao_anel":
+            return self._ataque_explosao_anel(jogador_pos)
+        elif self.ataque_atual == "explosao_infernal":
+            return self._ataque_explosao_infernal(jogador_pos)
+        elif self.ataque_atual == "apocalipse":
+            return self._ataque_apocalipse(jogador_pos)
+        
+        # Bullet hell por fase
+        elif self.ataque_atual == "bullet_hell_fase1":
+            return self._bullet_hell_fase1(jogador_pos)
+        elif self.ataque_atual == "bullet_hell_fase2":
+            return self._bullet_hell_fase2(jogador_pos)
+        elif self.ataque_atual == "bullet_hell_fase3":
+            return self._bullet_hell_fase3(jogador_pos)
+        
+        print(f"Aviso: Ataque desconhecido '{self.ataque_atual}'")
+        return []
+    
+    def receber_dano(self, dano):
+        """Processa dano recebido"""
+        if not self.invulneravel:
+            self.hp -= dano
+            if self.hp <= 0:
+                self.ativo = False
+    
+    def colidir_com_jogador(self, jogador):
+        """Processa colisão com o jogador"""
+        if not self.ativo or self.invulneravel:
+            return False
+        
+        distancia = calcular_distancia(self.pos, jogador.pos)
+        if distancia < self.raio + jogador.raio:
+            return jogador.receber_dano(self.dano)
+        return False
+    
+    def desenhar(self, tela, camera):
+        """Desenha o boss e seus efeitos"""
+        if not self.ativo:
+            return
+        
+        # Posição na tela
+        pos_tela = [self.pos[0] - camera[0], self.pos[1] - camera[1]]
+        
+        # Desenhar boss
+        cor = (255, 0, 0) if self.fase == 3 else ((255, 165, 0) if self.fase == 2 else (128, 0, 128))
+        pygame.draw.circle(tela, cor, (int(pos_tela[0]), int(pos_tela[1])), self.raio)
+        
+        # Desenhar indicadores de ataque
+        self.desenhar_indicadores(tela, camera)
+        
+        # Barra de vida
+        largura_barra = 80
+        altura_barra = 8
+        x_barra = pos_tela[0] - largura_barra // 2
+        y_barra = pos_tela[1] - self.raio - 20
+        
+        # Fundo da barra
+        pygame.draw.rect(tela, (100, 0, 0), 
+                        (x_barra, y_barra, largura_barra, altura_barra))
+        
+        # Vida atual
+        vida_largura = int(largura_barra * (self.hp / self.hp_max))
+        if vida_largura > 0:
+            pygame.draw.rect(tela, (0, 255, 0),
+                           (x_barra, y_barra, vida_largura, altura_barra))
+    
+    def desenhar_indicadores(self, tela, camera):
+        """Desenha os indicadores de área de ataque"""
+        for indicador in self.indicadores_area:
+            if indicador["tipo"] == "linha":
+                inicio = [indicador["inicio"][0] - camera[0],
+                         indicador["inicio"][1] - camera[1]]
+                fim = [indicador["fim"][0] - camera[0],
+                      indicador["fim"][1] - camera[1]]
+                pygame.draw.line(tela, indicador["cor"], inicio, fim, 2)
+            
+            elif indicador["tipo"] == "circulo":
+                pos = [indicador["pos"][0] - camera[0],
+                      indicador["pos"][1] - camera[1]]
+                pygame.draw.circle(tela, indicador["cor"], 
+                                 (int(pos[0]), int(pos[1])),
+                                 indicador["raio"], 2)
+
+    def _ataque_rajada_laser(self, jogador_pos):
+        """Ataque de rajada de laser"""
+        novos_projeteis = []
+        
+        for i in range(5):  # 5 lasers em leque
+            angulo = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+            offset = (i - 2) * 0.3  # Distribuir em leque
+            angulo_final = angulo + offset
+            
+            dx = math.cos(angulo_final)
+            dy = math.sin(angulo_final)
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           15, 5, (0, 255, 255))
+            )
+        
+        return novos_projeteis
+    
+    def _ataque_meteoros(self, jogador_pos):
+        """Cria uma chuva de meteoros com zonas seguras nas laterais"""
+        projeteis = []
+        
+        # Definir área segura nas laterais
+        area_segura_lateral = 200  # 200 pixels de cada lado da tela
+        
+        # Calcular área jogável para os meteoros
+        area_jogavel_min = jogador_pos[0] - 800 + area_segura_lateral
+        area_jogavel_max = jogador_pos[0] + 800 - area_segura_lateral
+        
+        # Criar 5-7 meteoros em posições aleatórias, mas garantindo espaços seguros
+        num_meteoros = random.randint(5, 7)
+        area_segura_entre = 100  # Espaço mínimo entre meteoros
+        
+        # Primeiro meteoro sempre mira próximo ao jogador (mas não diretamente)
+        offset_jogador = random.randint(-100, 100)
+        pos_x = max(min(jogador_pos[0] + offset_jogador, area_jogavel_max), area_jogavel_min)
+        pos_y = jogador_pos[1] - 400  # Começa acima da tela
+        
+        # Criar primeiro meteoro
+        vel_y = 4 + random.random() * 2
+        projetil = ProjetilBoss(pos_x, pos_y,
+                              pos_x, pos_y + 800,
+                              self.dano * 2, vel_y, (200, 100, 0))
+        projeteis.append(projetil)
+        
+        # Criar indicadores visuais nas áreas seguras
+        self.indicadores_area = [
+            {
+                "tipo": "retangulo",
+                "pos": [jogador_pos[0] - 800, jogador_pos[1] - 400],
+                "largura": area_segura_lateral,
+                "altura": 800,
+                "cor": (0, 255, 0, 50),  # Verde transparente
+                "duracao": 2000
+            },
+            {
+                "tipo": "retangulo",
+                "pos": [jogador_pos[0] + 800 - area_segura_lateral, jogador_pos[1] - 400],
+                "largura": area_segura_lateral,
+                "altura": 800,
+                "cor": (0, 255, 0, 50),  # Verde transparente
+                "duracao": 2000
+            }
+        ]
+        
+        # Criar meteoros adicionais
+        for i in range(1, num_meteoros):
+            tentativas = 0
+            pos_valido = False
+            
+            while tentativas < 10 and not pos_valido:
+                # Gerar posição dentro da área jogável
+                pos_x = random.randint(int(area_jogavel_min), int(area_jogavel_max))
+                pos_y = jogador_pos[1] - 400 - random.randint(0, 200)
+                
+                # Verificar se está longe o suficiente dos outros meteoros
+                muito_perto = False
+                for proj in projeteis:
+                    dist = math.sqrt((pos_x - proj.pos[0])**2)  # Só verifica distância horizontal
+                    if dist < area_segura_entre:
+                        muito_perto = True
+                        break
+                
+                if not muito_perto:
+                    pos_valido = True
+                tentativas += 1
+            
+            if pos_valido:
+                vel_y = 4 + random.random() * 2
+                projetil = ProjetilBoss(pos_x, pos_y,
+                                      pos_x, pos_y + 800,
+                                      self.dano * 2, vel_y, (200, 100, 0))
+                projeteis.append(projetil)
+        
+        return projeteis
+    
+    def _ataque_espinhos(self, jogador_pos):
+        """Ataque de espinhos em espiral"""
+        novos_projeteis = []
+        tempo = self.tempo_execucao / 1000.0  # Converter para segundos
+        
+        num_espinhos = 8
+        for i in range(num_espinhos):
+            angulo = tempo * 2 + (i * 2 * math.pi / num_espinhos)
+            dx = math.cos(angulo)
+            dy = math.sin(angulo)
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx * 300, self.pos[1] + dy * 300,
+                           15, 4, (255, 0, 255))
+            )
+        
+        return novos_projeteis
+    
+    def _ataque_laser_varredor(self, jogador_pos):
+        """Cria um laser que varre a área, mas com tempo suficiente para dodge"""
+        projeteis = []
+        
+        # Tempo total do ataque: 2 segundos
+        # Primeiro segundo: aviso visual
+        # Segundo segundo: laser ativo
+        if self.tempo_execucao < 1000:  # Primeiro segundo: apenas aviso
+            self.criar_indicadores_area(jogador_pos, "laser_varredor")
+            return []
+        
+        # Ângulo do laser baseado no tempo
+        progresso = (self.tempo_execucao - 1000) / 1000  # 0 a 1 no segundo segundo
+        angulo_base = math.pi * 2 * progresso  # Varre 360 graus
+        
+        # Criar vários projéteis em linha para formar o laser
+        comprimento_laser = 800
+        num_segmentos = 20
+        for i in range(num_segmentos):
+            dist = (i / num_segmentos) * comprimento_laser
+            pos_x = self.pos[0] + math.cos(angulo_base) * dist
+            pos_y = self.pos[1] + math.sin(angulo_base) * dist
+            
+            projetil = ProjetilBoss(pos_x, pos_y,
+                                  pos_x, pos_y,  # Não se move
+                                  self.dano, 0, AZUL)
+            projeteis.append(projetil)
+        
+        return projeteis
+    
+    def _ataque_explosao_infernal(self, jogador_pos):
+        """Ataque de explosão em área"""
+        novos_projeteis = []
+        
+        # Criar círculo de projéteis
+        num_projeteis = 16
+        for i in range(num_projeteis):
+            angulo = (i * 2 * math.pi / num_projeteis)
+            dx = math.cos(angulo)
+            dy = math.sin(angulo)
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx * 200, self.pos[1] + dy * 200,
+                           20, 3, (255, 100, 0))
+            )
+        
+        return novos_projeteis
+    
+    def _ataque_teleporte(self, jogador_pos):
+        """Ataque com teleporte"""
+        if not hasattr(self, 'teleporte_pos'):
+            # Escolher posição aleatória próxima ao jogador
+            angulo = random.uniform(0, 2 * math.pi)
+            dist = random.uniform(100, 300)
+            self.teleporte_pos = [
+                jogador_pos[0] + math.cos(angulo) * dist,
+                jogador_pos[1] + math.sin(angulo) * dist
+            ]
+            self.pos = self.teleporte_pos
+            return []
+        
+        # Após teleporte, atirar em todas as direções
+        novos_projeteis = []
+        num_projeteis = 16
+        for i in range(num_projeteis):
+            angulo = (i * 2 * math.pi / num_projeteis)
+            dx = math.cos(angulo)
+            dy = math.sin(angulo)
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx * 300, self.pos[1] + dy * 300,
+                           20, 4, (128, 0, 255))
+            )
+        
+        delattr(self, 'teleporte_pos')
+        return novos_projeteis
+    
+    def _ataque_apocalipse(self, jogador_pos):
+        """Versão nerfada do ataque apocalipse"""
+        projeteis = []
+        
+        # Reduzido de 8 para 6 lasers
+        num_lasers = 6
+        angulo_base = (self.tempo_execucao / 1000) * math.pi  # Rotação mais lenta
+        
+        for i in range(num_lasers):
+            angulo = angulo_base + (i * 2 * math.pi / num_lasers)
+            dist = 400  # Reduzido alcance
+            
+            pos_x = self.pos[0] + math.cos(angulo) * dist
+            pos_y = self.pos[1] + math.sin(angulo) * dist
+            
+            # Criar laser com dano reduzido
+            projetil = ProjetilBoss(self.pos[0], self.pos[1],
+                                  pos_x, pos_y,
+                                  self.dano * 1.5, 6, VERMELHO)  # Dano reduzido
+            projeteis.append(projetil)
+        
+        return projeteis
+    
+    def _ataque_vortice(self, jogador_pos):
+        """Versão mais fácil do vórtice"""
+        projeteis = []
+        tempo = self.tempo_execucao / 1000.0
+        
+        # Reduzido número de projéteis e velocidade
+        num_projeteis = 4  # Era 6
+        raio = 200 + math.sin(tempo * 2) * 50
+        
+        for i in range(num_projeteis):
+            angulo = tempo * 3 + (i * 2 * math.pi / num_projeteis)
+            pos_x = self.pos[0] + math.cos(angulo) * raio
+            pos_y = self.pos[1] + math.sin(angulo) * raio
+            
+            projetil = ProjetilBoss(pos_x, pos_y,
+                                  pos_x + math.cos(angulo) * 100,
+                                  pos_y + math.sin(angulo) * 100,
+                                  self.dano, 4, AZUL)  # Velocidade reduzida
+            projeteis.append(projetil)
+        
+        return projeteis
+    
+    def _ataque_furia(self, jogador_pos):
+        """Versão mais fácil da fúria"""
+        projeteis = []
+        
+        # Reduzido ainda mais o número de projéteis
+        num_ondas = 2
+        num_projeteis_por_onda = 4  # Era 6
+        
+        for onda in range(num_ondas):
+            angulo_base = (self.tempo_execucao / 600) * math.pi + (onda * math.pi / num_ondas)
+            
+            for i in range(num_projeteis_por_onda):
+                angulo = angulo_base + (i * 2 * math.pi / num_projeteis_por_onda)
+                dist = 250 + onda * 100  # Distância reduzida
+                
+                pos_x = self.pos[0] + math.cos(angulo) * dist
+                pos_y = self.pos[1] + math.sin(angulo) * dist
+                
+                projetil = ProjetilBoss(pos_x, pos_y,
+                                      pos_x + math.cos(angulo) * 100,
+                                      pos_y + math.sin(angulo) * 100,
+                                      self.dano, 4, VERMELHO)  # Velocidade reduzida
+                projeteis.append(projetil)
+        
+        return projeteis
+
+    # Novos ataques da Fase 1
+    def _ataque_tiro_triplo(self, jogador_pos):
+        """Ataque básico que dispara 3 projéteis em linha"""
+        novos_projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        for i in range(3):
+            dx = math.cos(angulo_base)
+            dy = math.sin(angulo_base)
+            velocidade = 3 + i  # Cada projétil é um pouco mais rápido
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           10, velocidade, (255, 100, 100))
+            )
+        
+        return novos_projeteis
+
+    def _ataque_espiral_simples(self, jogador_pos):
+        """Ataque forte que cria uma espiral simples de projéteis"""
+        novos_projeteis = []
+        tempo = self.tempo_execucao / 1000.0
+        
+        for i in range(4):  # 4 projéteis por vez
+            angulo = tempo * 3 + (i * math.pi / 2)
+            dx = math.cos(angulo) * 200
+            dy = math.sin(angulo) * 200
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           15, 3, (100, 200, 255))
+            )
+        
+        return novos_projeteis
+
+    def _ataque_onda_circular(self, jogador_pos):
+        """Ataque forte que cria uma onda circular de projéteis"""
+        novos_projeteis = []
+        num_projeteis = 8
+        
+        for i in range(num_projeteis):
+            angulo = (i * 2 * math.pi / num_projeteis)
+            dx = math.cos(angulo) * 150
+            dy = math.sin(angulo) * 150
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           12, 2.5, (150, 150, 255))
+            )
+        
+        return novos_projeteis
+
+    def _ataque_explosao_anel(self, jogador_pos):
+        """Ataque devastador que cria um anel explosivo"""
+        novos_projeteis = []
+        num_projeteis = 16
+        
+        for i in range(num_projeteis):
+            angulo = (i * 2 * math.pi / num_projeteis)
+            dx = math.cos(angulo) * 300
+            dy = math.sin(angulo) * 300
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           20, 6, (255, 50, 50))
+            )
+        
+        return novos_projeteis
+
+    # Bullet Hell por fase
+    def _bullet_hell_fase1(self, jogador_pos):
+        """Bullet hell mais simples - padrão em espiral"""
+        novos_projeteis = []
+        tempo = pygame.time.get_ticks() / 1000.0
+        
+        for i in range(4):
+            angulo = tempo * 2 + (i * math.pi / 2)
+            dx = math.cos(angulo) * 200
+            dy = math.sin(angulo) * 200
+            
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           10, 3, (255, 200, 200))
+            )
+        
+        return novos_projeteis
+
+    def _bullet_hell_fase2(self, jogador_pos):
+        """Bullet hell médio - padrão em grade"""
+        novos_projeteis = []
+        tempo = pygame.time.get_ticks() / 1000.0
+        
+        # Grade 3x3 de projéteis
+        for x in range(-1, 2):
+            for y in range(-1, 2):
+                if x == 0 and y == 0:
+                    continue
+                
+                dx = x * math.cos(tempo) - y * math.sin(tempo)
+                dy = x * math.sin(tempo) + y * math.cos(tempo)
+                
+                novos_projeteis.append(
+                    ProjetilBoss(self.pos[0], self.pos[1],
+                               self.pos[0] + dx * 150, self.pos[1] + dy * 150,
+                               15, 4, (255, 150, 50))
+                )
+        
+        return novos_projeteis
+
+    def _bullet_hell_fase3(self, jogador_pos):
+        """Bullet hell difícil - múltiplos padrões"""
+        novos_projeteis = []
+        tempo = pygame.time.get_ticks() / 1000.0
+        
+        # Padrão 1: Espiral
+        for i in range(8):
+            angulo = tempo * 3 + (i * math.pi / 4)
+            dx = math.cos(angulo) * 250
+            dy = math.sin(angulo) * 250
+            novos_projeteis.append(
+                ProjetilBoss(self.pos[0], self.pos[1],
+                           self.pos[0] + dx, self.pos[1] + dy,
+                           15, 5, (255, 50, 50))
+            )
+        
+        # Padrão 2: Círculos concêntricos
+        if int(tempo * 2) % 2 == 0:
+            for r in range(100, 301, 100):
+                for i in range(6):
+                    angulo = (i * 2 * math.pi / 6) + tempo
+                    dx = math.cos(angulo) * r
+                    dy = math.sin(angulo) * r
+                    novos_projeteis.append(
+                        ProjetilBoss(self.pos[0], self.pos[1],
+                                   self.pos[0] + dx, self.pos[1] + dy,
+                                   15, 4, (255, 0, 255))
+                    )
+        
+        return novos_projeteis
+
+    def _ataque_tiro_duplo(self, jogador_pos):
+        """Atira dois projéteis em direção ao jogador com um pequeno ângulo entre eles"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # Ângulo entre os tiros
+        angulo_separacao = math.pi / 12  # 15 graus
+        
+        for i in range(2):
+            angulo = angulo_base + (angulo_separacao * (i - 0.5))
+            vel_x = math.cos(angulo) * 5
+            vel_y = math.sin(angulo) * 5
+            
+            projetil = ProjetilBoss(self.pos[0], self.pos[1], 
+                                  self.pos[0] + vel_x, self.pos[1] + vel_y,
+                                  self.dano, 5, VERMELHO)
+            projeteis.append(projetil)
+        
+        return projeteis
+
+    def _ataque_tiro_angular(self, jogador_pos):
+        """Atira três projéteis em ângulos fixos, deixando espaços para dodge"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # Três tiros com espaços de 45 graus entre eles
+        angulos = [-math.pi/4, 0, math.pi/4]  # -45°, 0°, 45°
+        
+        for angulo_offset in angulos:
+            angulo = angulo_base + angulo_offset
+            vel_x = math.cos(angulo) * 5
+            vel_y = math.sin(angulo) * 5
+            
+            projetil = ProjetilBoss(self.pos[0], self.pos[1], 
+                                  self.pos[0] + vel_x, self.pos[1] + vel_y,
+                                  self.dano, 5, VERMELHO)
+            projeteis.append(projetil)
+        
+        return projeteis
+
+    def _ataque_tiro_espalhado(self, jogador_pos):
+        """Atira vários projéteis em leque"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # 5 tiros em leque, cobrindo 60 graus
+        num_tiros = 5
+        angulo_total = math.pi / 3  # 60 graus
+        
+        for i in range(num_tiros):
+            angulo = angulo_base + (angulo_total * (i / (num_tiros - 1) - 0.5))
+            vel_x = math.cos(angulo) * 6
+            vel_y = math.sin(angulo) * 6
+            
+            projetil = ProjetilBoss(self.pos[0], self.pos[1], 
+                                  self.pos[0] + vel_x, self.pos[1] + vel_y,
+                                  self.dano, 6, VERMELHO)
+            projeteis.append(projetil)
+        
+        return projeteis
+
+    def _ataque_tiro_perseguidor(self, jogador_pos):
+        """Atira projéteis que perseguem o jogador"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # Cria um projétil que persegue o jogador
+        projetil = ProjetilBoss(self.pos[0], self.pos[1], 
+                              jogador_pos[0], jogador_pos[1],
+                              self.dano, 3.5, VERMELHO, tipo="perseguidor")  # Velocidade reduzida
+        projeteis.append(projetil)
+        
+        return projeteis
+
+    def _ataque_tiro_ricochete(self, jogador_pos):
+        """Atira projéteis que ricocheteiam nas paredes"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # 3 tiros que ricocheteiam
+        for i in range(3):
+            angulo = angulo_base + (math.pi / 6) * (i - 1)  # -30°, 0°, 30°
+            vel_x = math.cos(angulo) * 7
+            vel_y = math.sin(angulo) * 7
+            
+            projetil = ProjetilBoss(self.pos[0], self.pos[1], 
+                                  self.pos[0] + vel_x, self.pos[1] + vel_y,
+                                  self.dano, 7, LARANJA, tipo="ricochete")
+            projeteis.append(projetil)
+        
+        return projeteis
+
+    def _ataque_tiro_rapido(self, jogador_pos):
+        """Atira uma rajada rápida de projéteis"""
+        projeteis = []
+        angulo_base = math.atan2(jogador_pos[1] - self.pos[1], jogador_pos[0] - self.pos[0])
+        
+        # 3 tiros rápidos em sequência
+        for i in range(3):
+            offset = (i - 1) * 30  # Aumentado offset para mais espaço entre tiros
+            vel_x = math.cos(angulo_base) * 7  # Velocidade reduzida
+            vel_y = math.sin(angulo_base) * 7
+            
+            projetil = ProjetilBoss(self.pos[0] + math.cos(angulo_base) * offset, 
+                                  self.pos[1] + math.sin(angulo_base) * offset,
+                                  self.pos[0] + vel_x, self.pos[1] + vel_y,
+                                  self.dano, 7, VERMELHO)
+            projeteis.append(projetil)
+        
+        return projeteis
+
+class ProjetilBoss:
+    def __init__(self, x, y, alvo_x, alvo_y, dano, velocidade, cor, tipo="normal"):
+        self.pos = [x, y]
+        self.alvo = [alvo_x, alvo_y]
+        self.dano = dano
+        self.velocidade = velocidade * 0.7  # Reduzir velocidade geral em 30%
+        self.cor = cor
+        self.tipo = tipo
+        self.ativo = True
+        self.raio = 8 if tipo in ["basico", "laser"] else 12
+        
+        # Calcular direção
+        dx = alvo_x - x
+        dy = alvo_y - y
+        if dx != 0 or dy != 0:
+            self.direcao = normalizar_vetor(dx, dy)
+        else:
+            self.direcao = (1, 0)
+        
+        # Efeitos especiais baseados no tipo
+        if tipo == "meteoro":
+            self.trail = []  # Rastro do meteoro
+            self.raio = 15
+        elif tipo in ["laser", "laser_varredor"]:
+            self.raio = 6  # Lasers mais finos
+        elif tipo == "explosao":
+            self.raio = 20  # Explosões maiores mas mais lentas
+        
+        # Tempo de vida (alguns projéteis desaparecem com o tempo)
+        self.tempo_vida = 8000  # 8 segundos
+        self.tempo_criacao = pygame.time.get_ticks()
+
+    def atualizar(self):
+        """Atualiza posição e estado do projétil"""
+        if not self.ativo:
+            return
+        
+        # Verificar tempo de vida
+        tempo_atual = pygame.time.get_ticks()
+        if tempo_atual - self.tempo_criacao > self.tempo_vida:
+            self.ativo = False
+            return
+        
+        # Movimento
+        self.pos[0] += self.direcao[0] * self.velocidade
+        self.pos[1] += self.direcao[1] * self.velocidade
+        
+        # Verificar limites do mapa - projéteis do boss podem sair um pouco do mapa
+        if (self.pos[0] < -100 or self.pos[0] > LARGURA_MAPA + 100 or 
+            self.pos[1] < -100 or self.pos[1] > ALTURA_MAPA + 100):
+            self.ativo = False
+
+    def colidir_com_jogador(self, jogador):
+        """Verifica colisão com o jogador"""
+        if not self.ativo:
+            return False
+        
+        distancia = calcular_distancia(self.pos, jogador.pos)
+        if distancia < self.raio + jogador.raio:
+            self.ativo = False
+            return jogador.receber_dano(self.dano)
+        
+        return False
+
+    def desenhar(self, tela, camera):
+        """Desenha o projétil na tela"""
+        if not self.ativo:
+            return
+        
+        pos_tela = (int(self.pos[0] - camera[0]), int(self.pos[1] - camera[1]))
+        
+        # Verificar se está na tela
+        if (pos_tela[0] < -50 or pos_tela[0] > LARGURA_TELA + 50 or
+            pos_tela[1] < -50 or pos_tela[1] > ALTURA_TELA + 50):
+            return
+        
+        # Desenho baseado no tipo
+        if self.tipo == "meteoro":
+            # Rastro de fogo
+            for i in range(3):
+                rastro_x = int(self.pos[0] - self.direcao[0] * i * 10 - camera[0])
+                rastro_y = int(self.pos[1] - self.direcao[1] * i * 10 - camera[1])
+                alpha = 100 - i * 30
+                if alpha > 0:
+                    cor_rastro = (255, alpha, alpha // 2)
+                    pygame.draw.circle(tela, cor_rastro, (rastro_x, rastro_y), self.raio - i * 2)
+            
+            # Meteoro principal
+            pygame.draw.circle(tela, self.cor, pos_tela, self.raio)
+            pygame.draw.circle(tela, (255, 255, 150), pos_tela, max(2, self.raio - 4))
+            
+        elif self.tipo in ["laser", "laser_varredor"]:
+            # Laser com brilho
+            pygame.draw.circle(tela, (255, 255, 255), pos_tela, self.raio + 2)
+            pygame.draw.circle(tela, self.cor, pos_tela, self.raio)
+            
+        elif self.tipo == "explosao":
+            # Projétil de explosão pulsante
+            pulso = 1 + 0.3 * math.sin(pygame.time.get_ticks() * 0.01)
+            raio_atual = int(self.raio * pulso)
+            pygame.draw.circle(tela, (255, 100, 0), pos_tela, raio_atual)
+            pygame.draw.circle(tela, self.cor, pos_tela, max(2, raio_atual - 4))
+            
+        else:
+            # Projétil básico com pequeno brilho
+            pygame.draw.circle(tela, (255, 255, 255), pos_tela, self.raio + 1)
+            pygame.draw.circle(tela, self.cor, pos_tela, self.raio)
 
 class Jogo:
     def __init__(self):
         pygame.init()
         
+        # Configurações de janela
+        self.tela = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
+        pygame.display.set_caption("Vampire Survivors")
+        
+        # Carregar imagem do volume
+        self.imagem_volume = pygame.image.load("assets/volume.png")
+        self.imagem_volume = pygame.transform.scale(self.imagem_volume, (32, 32))
+        
+        # Configurações de volume
+        self.volume = 0.15  # Volume inicial (15%)
+        self.arrastando_volume = False
+        self.barra_volume_rect = pygame.Rect(60, ALTURA_TELA - 40, 100, 10)
+        self.mostrar_controle_volume = False
+        self.tempo_ultimo_mouse_volume = 0
+        
+        # Relógio e tempo
+        self.relogio = pygame.time.Clock()
+        self.inicio_jogo = pygame.time.get_ticks()
+        self.tempo_pausado = 0  # Tempo total em que o jogo ficou pausado
+        self.momento_pausa = 0  # Momento em que a última pausa começou
+        
+        # Estado do jogo
+        self.rodando = True
+        self.estado = "jogando"  # jogando, upgrade, game_over, vitoria
+        self.pausado = False
+        
+        # Modo Desenvolvedor
+        self.modo_dev = False  # Começa desativado
+        self.dev_menu_aberto = False
+        
         # Inicializar sistema de áudio
         pygame.mixer.init()
         
-        # Controle de volume (definir antes de qualquer som)
-        self.volume_atual = 0.3  # Volume inicial (30%)
+        # Controle de volume
         self.mostrar_controle_volume = False
         self.tempo_ultimo_mouse_volume = 0
         self.arrastando_volume = False
@@ -33,7 +1167,7 @@ class Jogo:
         # Carregar sons
         try:
             self.som_boss_spawn = pygame.mixer.Sound("assets/boss-spawn.mp3")
-            self.som_boss_spawn.set_volume(self.volume_atual)  # Definir volume inicial
+            self.som_boss_spawn.set_volume(self.volume)  # Definir volume inicial
         except Exception as e:
             print(f"Aviso: Não foi possível carregar o som boss-spawn.mp3: {e}")
             self.som_boss_spawn = None
@@ -42,61 +1176,23 @@ class Jogo:
         try:
             self.caminho_musica_inicial = "assets/ost1.mp3"
             pygame.mixer.music.load(self.caminho_musica_inicial)
-            pygame.mixer.music.set_volume(self.volume_atual)
-            pygame.mixer.music.play(0)  # Tocar apenas uma vez (0 = sem repetição)
-            print("Música inicial iniciada!")
+            pygame.mixer.music.set_volume(self.volume)
+            pygame.mixer.music.play(-1)  # -1 faz tocar em loop infinito
+            print("Música inicial iniciada em loop!")
         except Exception as e:
             print(f"Aviso: Não foi possível carregar a música inicial: {e}")
             self.caminho_musica_inicial = None
         
         # Carregar música do boss
         try:
-            self.musica_boss_carregada = False
-            # Não carregar ainda, apenas marcar caminho
             self.caminho_musica_boss = "assets/boss-theme.mp3"
-        except:
-            print("Aviso: Não foi possível encontrar boss-theme.mp3")
-            self.caminho_musica_boss = None
-        
-        # Carregar ícone de volume
-        try:
-            caminho_volume = "assets/volume.png"
-            print(f"Tentando carregar ícone de volume de: {caminho_volume}")
-            
-            # Verificar se o arquivo existe
-            if not os.path.exists(caminho_volume):
-                print(f"Arquivo não encontrado: {caminho_volume}")
-                self.icone_volume_img = None
-            else:
-                img = pygame.image.load(caminho_volume)
-                print(f"Imagem carregada: {img.get_size()}")
-                
-                # Converter e escalar
-                if img.get_alpha() is None:
-                    img = img.convert()
-                else:
-                    img = img.convert_alpha()
-                self.icone_volume_img = pygame.transform.scale(img, (24, 24))
-                print("Ícone de volume carregado e escalado com sucesso!")
+            self.musica_boss_carregada = False
         except Exception as e:
-            print(f"Erro ao carregar ícone de volume: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.icone_volume_img = None
-        
-        self.tela = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
-        pygame.display.set_caption("Vampire Survivors - Demo")
-        self.clock = pygame.time.Clock()
+            print(f"Aviso: Não foi possível carregar a música do boss: {e}")
+            self.caminho_musica_boss = None
         
         # Inicialização do cenário espacial
         self.cenario = CenarioEspacial()
-        
-        # Estado do jogo
-        self.estado = "jogando"  # "jogando", "upgrade", "game_over", "vitoria"
-        self.inicio_jogo = pygame.time.get_ticks()
-        
-        # Câmera
-        self.camera = [0, 0]
         
         # Objetos do jogo
         self.jogador = Jogador(LARGURA_MAPA // 2, ALTURA_MAPA // 2)
@@ -138,10 +1234,9 @@ class Jogo:
         self.mostrando_mensagem_maximos = False
         self.tempo_mensagem_maximos = 0
         
-        # Modo Desenvolvedor
-        self.modo_dev = True  # Ativar por padrão para testes
-        self.dev_menu_aberto = False
-        
+        # Câmera
+        self.camera = [0, 0]
+    
     def obter_tempo_jogo(self):
         """Retorna o tempo de jogo em segundos"""
         return (pygame.time.get_ticks() - self.inicio_jogo) / 1000.0
@@ -379,9 +1474,24 @@ class Jogo:
                 self.itens.remove(item)
     
     def atualizar(self):
-        """Atualiza todos os elementos do jogo"""
+        """Atualiza o estado do jogo"""
+        # Não atualizar se estiver em upgrade
+        if self.estado == "upgrade":
+            return
+            
+        # Não atualizar se estiver em game over ou vitória
         if self.estado != "jogando":
             return
+            
+        if self.pausado or self.estado == "upgrade":
+            # Se pausado ou na tela de upgrade, não atualizar o tempo
+            if self.momento_pausa == 0:
+                self.momento_pausa = pygame.time.get_ticks()
+            return
+        elif self.momento_pausa > 0:
+            # Ao despausar, ajustar o tempo total pausado
+            self.tempo_pausado += pygame.time.get_ticks() - self.momento_pausa
+            self.momento_pausa = 0
         
         # Atualizar cenário
         self.cenario.atualizar()
@@ -557,6 +1667,9 @@ class Jogo:
         if self.modo_dev:
             self.desenhar_menu_dev()
         
+        # Desenhar controle de volume
+        self.desenhar_controle_volume()
+        
         pygame.display.flip()
     
     def desenhar_ui(self):
@@ -577,17 +1690,13 @@ class Jogo:
         
         # === VIDA ===
         y_offset = 25
-        # Ícone de coração simulado
-        pygame.draw.circle(self.tela, VERMELHO, (30, y_offset), 8)
-        pygame.draw.circle(self.tela, VERMELHO, (42, y_offset), 8)
-        # Texto da vida
-        desenhar_texto(self.tela, f"{self.jogador.hp}/{self.jogador.hp_max}", 
-                      (60, y_offset - 8), BRANCO, 24, sombra=True)
+        # Texto HP
+        desenhar_texto(self.tela, "HP", (30, y_offset - 8), BRANCO, 24, sombra=True)
         
         # Barra de vida visual
         barra_largura = 200
         barra_altura = 8
-        x_barra = 120
+        x_barra = 80
         y_barra = y_offset - 4
         
         # Fundo da barra
@@ -599,26 +1708,19 @@ class Jogo:
         cor_vida = VERDE if proporcao_vida > 0.6 else (255, 165, 0) if proporcao_vida > 0.3 else VERMELHO
         pygame.draw.rect(self.tela, cor_vida, (x_barra, y_barra, largura_vida, barra_altura))
         
-        # === LEVEL E XP ===
+        # === XP ===
         y_offset += 35
-        # Ícone de estrela para level
-        desenhar_texto(self.tela, "★", (25, y_offset - 8), DOURADO, 20, sombra=True)
-        desenhar_texto(self.tela, f"Nível {self.jogador.level}", 
-                      (50, y_offset - 8), DOURADO, 22, sombra=True)
+        # Texto XP
+        desenhar_texto(self.tela, "XP", (30, y_offset - 8), BRANCO, 24, sombra=True)
         
         # Barra de XP
-        y_offset += 25
-        desenhar_texto(self.tela, f"XP: {self.jogador.xp}/{self.jogador.xp_para_proximo}", 
-                      (25, y_offset - 8), AZUL_CLARO, 18, sombra=True)
-        
-        # Barra de XP visual
-        y_barra_xp = y_offset + 15
-        pygame.draw.rect(self.tela, (20, 30, 50), (25, y_barra_xp, barra_largura, 6))
+        y_barra_xp = y_offset - 4
+        pygame.draw.rect(self.tela, (20, 30, 50), (x_barra, y_barra_xp, barra_largura, barra_altura))
         proporcao_xp = self.jogador.xp / self.jogador.xp_para_proximo
         largura_xp = int(barra_largura * proporcao_xp)
-        pygame.draw.rect(self.tela, AZUL_CLARO, (25, y_barra_xp, largura_xp, 6))
+        pygame.draw.rect(self.tela, AZUL_CLARO, (x_barra, y_barra_xp, largura_xp, barra_altura))
         
-        # === TEMPO RESTANTE (Destaque especial) ===
+        # === TEMPO RESTANTE ===
         y_offset += 45
         tempo_restante = self.obter_tempo_restante()
         minutos = int(tempo_restante // 60)
@@ -627,24 +1729,19 @@ class Jogo:
         # Determinar cor baseada no tempo restante
         if tempo_restante <= 60:  # Último minuto
             cor_tempo = VERMELHO
-            tempo_texto = f"⚠ {minutos:02d}:{segundos:02d} ⚠"
+            tempo_texto = f"{minutos:02d}:{segundos:02d}"
         elif tempo_restante <= 180:  # Últimos 3 minutos
             cor_tempo = (255, 165, 0)  # Laranja
-            tempo_texto = f"⏰ {minutos:02d}:{segundos:02d}"
+            tempo_texto = f"{minutos:02d}:{segundos:02d}"
         else:
             cor_tempo = BRANCO
-            tempo_texto = f"⏱ {minutos:02d}:{segundos:02d}"
-        
-        # Boss warning
-        if tempo_restante <= 0:
-            tempo_texto = "🔥 BOSS FIGHT! 🔥"
-            cor_tempo = VERMELHO
+            tempo_texto = f"{minutos:02d}:{segundos:02d}"
         
         desenhar_texto(self.tela, tempo_texto, (25, y_offset - 8), cor_tempo, 26, sombra=True)
         
-        # === HABILIDADES (Lado direito melhorado) ===
+        # === HABILIDADES (Canto inferior direito) ===
         x_habilidades = LARGURA_TELA - 300
-        y_base = 15
+        y_base = ALTURA_TELA - 240  # Movido para baixo
         
         # Painel de habilidades
         largura_hab = 285
@@ -658,90 +1755,65 @@ class Jogo:
         pygame.draw.rect(self.tela, (100, 255, 100), (x_habilidades, y_base, largura_hab, altura_hab), 2)
         
         # Título das habilidades
-        desenhar_texto(self.tela, "⚔ HABILIDADES ⚔", (x_habilidades + 20, y_base + 15), 
+        desenhar_texto(self.tela, "HABILIDADES", (x_habilidades + 20, y_base + 15), 
                       (100, 255, 100), 18, sombra=True)
         y_hab = y_base + 45
         
         # Dash
         if self.jogador.dash_nivel > 0:
-            icone = "💨" if self.jogador.dash_cooldown == 0 else "⏳"
             if self.jogador.dash_cooldown > 0:
-                texto = f"{icone} Dash: {self.jogador.dash_cooldown//1000 + 1}s"
+                texto = f"Dash: {self.jogador.dash_cooldown//1000 + 1}s"
                 cor = (255, 100, 100)
             else:
-                texto = f"{icone} Dash: PRONTO"
+                texto = "Dash: PRONTO"
                 cor = (100, 255, 100)
             desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
             y_hab += 22
         
         # Espada orbital
         if self.jogador.espada_nivel > 0:
-            texto = f"⚔ Espadas Orbitais Nv.{self.jogador.espada_nivel}"
-            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), 
-                          (255, 200, 100), 16, sombra=True)
+            texto = f"Espadas Orbitais Nv.{self.jogador.espada_nivel}"
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), BRANCO, 16, sombra=True)
             y_hab += 22
         
-        # Bomba automática
-        if self.jogador.bomba_nivel > 0:
-            tempo_bomba = max(0, 8000 - (self.jogador.bomba_nivel * 1000) - 
-                            (pygame.time.get_ticks() - self.jogador.ultimo_bomba_auto))
-            if tempo_bomba > 0:
-                texto = f"💣 Próxima Bomba: {tempo_bomba//1000 + 1}s"
-                cor = (255, 150, 50)
+        # Raios
+        if self.jogador.raios_nivel > 0:
+            if self.jogador.raios_cooldown > 0:
+                texto = f"Raios: {self.jogador.raios_cooldown//1000 + 1}s"
+                cor = (255, 100, 100)
             else:
-                texto = f"💣 Bomba Nv.{self.jogador.bomba_nivel}: PRONTA"
+                texto = "Raios: PRONTO"
                 cor = (100, 255, 100)
             desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
             y_hab += 22
         
-        # Raios automáticos
-        if self.jogador.raios_nivel > 0:
-            tempo_raios = max(0, 6000 - (self.jogador.raios_nivel * 800) - 
-                            (pygame.time.get_ticks() - self.jogador.ultimo_raios_auto))
-            if tempo_raios > 0:
-                texto = f"⚡ Próximos Raios: {tempo_raios//1000 + 1}s"
-                cor = (255, 200, 50)
+        # Bomba
+        if self.jogador.bomba_nivel > 0:
+            if self.jogador.bomba_cooldown > 0:
+                texto = f"Bomba: {self.jogador.bomba_cooldown//1000 + 1}s"
+                cor = (255, 100, 100)
             else:
-                texto = f"⚡ Raios Nv.{self.jogador.raios_nivel}: PRONTOS"
+                texto = "Bomba: PRONTO"
+                cor = (100, 255, 100)
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            y_hab += 22
+        
+        # Escudo
+        if self.jogador.escudo_nivel > 0:
+            if self.jogador.escudo_cooldown > 0:
+                texto = f"Escudo: {self.jogador.escudo_cooldown//1000 + 1}s"
+                cor = (255, 100, 100)
+            else:
+                texto = "Escudo: PRONTO"
                 cor = (100, 255, 100)
             desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
             y_hab += 22
         
         # Campo gravitacional
         if self.jogador.campo_nivel > 0:
-            if self.jogador.campo_nivel >= 5:
-                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: MÁXIMO"
-                cor = (200, 100, 255)
-            else:
-                texto = f"🌀 Campo Nv.{self.jogador.campo_nivel}: ATIVO"
-                cor = (150, 100, 255)
-            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), cor, 16, sombra=True)
+            texto = f"Campo Gravitacional Nv.{self.jogador.campo_nivel}"
+            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), BRANCO, 16, sombra=True)
             y_hab += 22
-        
-        # Coleta de XP
-        if self.jogador.coleta_nivel > 0:
-            texto = f"🧲 Magnetismo Nv.{self.jogador.coleta_nivel}"
-            desenhar_texto(self.tela, texto, (x_habilidades + 20, y_hab), 
-                          (100, 200, 255), 16, sombra=True)
-            y_hab += 22
-        
-        # === CONTROLES (Canto inferior direito, mais compacto) ===
-        y_controles = ALTURA_TELA - 85
-        controles_surf = pygame.Surface((280, 75))
-        controles_surf.set_alpha(120)
-        controles_surf.fill((25, 15, 35))
-        self.tela.blit(controles_surf, (x_habilidades, y_controles))
-        
-        # Borda roxa para controles
-        pygame.draw.rect(self.tela, (150, 100, 200), (x_habilidades, y_controles, 280, 75), 2)
-        
-        desenhar_texto(self.tela, "🎮 CONTROLES", (x_habilidades + 20, y_controles + 10), 
-                      (200, 150, 255), 16, sombra=True)
-        desenhar_texto(self.tela, "Mouse: Mirar/Atirar  •  WASD: Mover", 
-                      (x_habilidades + 20, y_controles + 30), BRANCO, 14, sombra=True)
-        if self.jogador.dash_nivel > 0:
-            desenhar_texto(self.tela, "ESPAÇO: Dash Temporal", 
-                          (x_habilidades + 20, y_controles + 50), BRANCO, 14, sombra=True)
         
         # === BARRA DO BOSS (se ativo) ===
         if self.boss and self.boss.ativo:
@@ -780,16 +1852,24 @@ class Jogo:
         """Processa eventos do pygame"""
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
-                return False
+                self.rodando = False
             
-            if evento.type == pygame.KEYDOWN:
+            elif evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
                     if self.estado == "jogando":
-                        pygame.quit()
-                        exit()
-                    elif self.estado in ["game_over", "vitoria"]:
-                        pygame.quit()
-                        exit()
+                        self.pausado = not self.pausado
+                        if self.pausado:
+                            self.momento_pausa = pygame.time.get_ticks()
+                        else:
+                            self.tempo_pausado += pygame.time.get_ticks() - self.momento_pausa
+                    elif self.estado == "game_over" or self.estado == "vitoria":
+                        self.rodando = False
+                
+                # Ativar modo dev com F10
+                elif evento.key == pygame.K_F10:
+                    self.modo_dev = not self.modo_dev
+                    if not self.modo_dev:
+                        self.dev_menu_aberto = False
                 
                 # Habilidades especiais (apenas durante o jogo)
                 elif self.estado == "jogando":
@@ -899,52 +1979,54 @@ class Jogo:
             if self.estado == "jogando":
                 if evento.type == pygame.MOUSEBUTTONDOWN:
                     if evento.button == 1:  # Botão esquerdo
-                        # Verificar se clicou na barra de volume
-                        if self.mostrar_controle_volume:
-                            x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
-                            mouse_x, mouse_y = evento.pos
-                            if (x_barra <= mouse_x <= x_barra + largura_barra and 
-                                y_barra - 5 <= mouse_y <= y_barra + 15):
-                                self.arrastando_volume = True
-                                # Calcular novo volume baseado na posição do clique
-                                proporcao = (mouse_x - x_barra) / largura_barra
-                                self.atualizar_volume(proporcao)
+                        mouse_x, mouse_y = evento.pos
+                        x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
+                        
+                        # Área de clique da barra (um pouco maior para facilitar)
+                        area_barra = pygame.Rect(x_barra - 5, y_barra - 5, largura_barra + 10, 18)
+                        
+                        if area_barra.collidepoint(mouse_x, mouse_y):
+                            self.arrastando_volume = True
+                            # Calcular novo volume baseado na posição do clique
+                            proporcao = (mouse_x - x_barra) / largura_barra
+                            proporcao = max(0, min(1, proporcao))  # Limitar entre 0 e 1
+                            self.atualizar_volume(proporcao)
                 
                 elif evento.type == pygame.MOUSEBUTTONUP:
                     if evento.button == 1:  # Botão esquerdo
                         self.arrastando_volume = False
                 
                 elif evento.type == pygame.MOUSEMOTION:
-                    # Verificar se o mouse está sobre o ícone de volume
-                    x_icone, y_icone = self.obter_posicao_icone_volume()
                     mouse_x, mouse_y = evento.pos
+                    x_icone, y_icone = self.obter_posicao_icone_volume()
+                    x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
                     
-                    # Área do ícone de volume (20x20 pixels)
-                    if (x_icone <= mouse_x <= x_icone + 20 and 
-                        y_icone <= mouse_y <= y_icone + 20):
+                    # Área do ícone e barra de volume
+                    area_icone = pygame.Rect(x_icone, y_icone, 32, 32)
+                    area_barra = pygame.Rect(x_barra - 5, y_barra - 5, largura_barra + 10, 18)
+                    
+                    # Mostrar controle se mouse sobre ícone ou barra
+                    if area_icone.collidepoint(mouse_x, mouse_y) or area_barra.collidepoint(mouse_x, mouse_y):
                         self.mostrar_controle_volume = True
                         self.tempo_ultimo_mouse_volume = pygame.time.get_ticks()
                     
-                    # Se estiver arrastando o volume
-                    if self.arrastando_volume and self.mostrar_controle_volume:
-                        x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
-                        if x_barra <= mouse_x <= x_barra + largura_barra:
-                            proporcao = (mouse_x - x_barra) / largura_barra
-                            self.atualizar_volume(proporcao)
+                    # Atualizar volume se estiver arrastando
+                    if self.arrastando_volume:
+                        proporcao = (mouse_x - x_barra) / largura_barra
+                        proporcao = max(0, min(1, proporcao))  # Limitar entre 0 e 1
+                        self.atualizar_volume(proporcao)
         
         return True
     
     def executar(self):
         """Loop principal do jogo"""
-        rodando = True
-        
-        while rodando:
-            rodando = self.processar_eventos()
+        while self.rodando:
+            self.processar_eventos()
             
             self.atualizar()
             self.desenhar()
             
-            self.clock.tick(FPS)
+            self.relogio.tick(FPS)
         
         pygame.quit()
         sys.exit()
@@ -1213,101 +2295,70 @@ class Jogo:
                       (x_menu + 20, y_atual), BRANCO, 16)
 
     def tocar_musica_boss(self):
-        """Inicia a música de fundo do boss com volume ajustado"""
-        if self.caminho_musica_boss and not self.musica_boss_carregada:
+        """Inicia a música do boss"""
+        if self.caminho_musica_boss:
             try:
-                pygame.mixer.music.stop()  # Parar música atual
-                pygame.mixer.music.unload()  # Descarregar música atual
+                pygame.mixer.music.stop()  # Parar música atual antes
                 pygame.mixer.music.load(self.caminho_musica_boss)
-                pygame.mixer.music.set_volume(self.volume_atual)  # Usar volume configurável
-                pygame.mixer.music.play(-1)  # Loop infinito
+                pygame.mixer.music.set_volume(self.volume)
+                pygame.mixer.music.play(-1)  # Tocar em loop
                 self.musica_boss_carregada = True
                 print("Música do boss iniciada!")
             except Exception as e:
-                print(f"Erro ao carregar música do boss: {e}")
+                print(f"Aviso: Erro ao tocar música do boss: {e}")
+                self.musica_boss_carregada = False
     
     def parar_musica_boss(self):
-        """Para a música do boss"""
-        if self.musica_boss_carregada:
-            pygame.mixer.music.stop()
-            self.musica_boss_carregada = False
-            print("Música do boss parada!")
+        """Para a música do boss e volta para a música normal"""
+        if self.caminho_musica_inicial:
+            try:
+                pygame.mixer.music.load(self.caminho_musica_inicial)
+                pygame.mixer.music.set_volume(self.volume)
+                pygame.mixer.music.play(-1)  # Voltar a tocar em loop
+                self.musica_boss_carregada = False
+                print("Voltando para música inicial!")
+            except Exception as e:
+                print(f"Aviso: Erro ao voltar para música inicial: {e}")
 
     def atualizar_volume(self, novo_volume):
         """Atualiza o volume de todos os sons do jogo"""
-        self.volume_atual = max(0.0, min(1.0, novo_volume))  # Limitar entre 0 e 1
-        
-        # Atualizar volume da música atual
-        pygame.mixer.music.set_volume(self.volume_atual)
-        
-        # Atualizar volume dos efeitos sonoros
-        if self.som_boss_spawn:
-            self.som_boss_spawn.set_volume(self.volume_atual)
+        self.volume = novo_volume
+        pygame.mixer.music.set_volume(novo_volume)  # Música de fundo
+        # Se houver outros sons, atualizar aqui também
 
     def obter_posicao_icone_volume(self):
         """Retorna a posição do ícone de volume"""
-        return (20, ALTURA_TELA - 50)  # Canto inferior esquerdo
+        return (20, ALTURA_TELA - 40)  # Ajustado para alinhar melhor
     
     def obter_posicao_barra_volume(self):
         """Retorna a posição e tamanho da barra de volume"""
         x_icone, y_icone = self.obter_posicao_icone_volume()
-        x_barra = x_icone + 30   # Barra à direita do ícone
-        y_barra = y_icone + 5    # Centralizada verticalmente com o ícone
-        largura_barra = 80
+        x_barra = x_icone + 35   # Ajustado para melhor espaçamento
+        y_barra = y_icone + 10   # Centralizado com o ícone
+        largura_barra = 100      # Barra mais larga para melhor controle
         return x_barra, y_barra, largura_barra
     
     def desenhar_controle_volume(self):
-        """Desenha o ícone de volume e a barra se necessário"""
-        x_icone, y_icone = self.obter_posicao_icone_volume()
-        
-        # Determinar ícone baseado no volume
-        if self.volume_atual == 0:
-            icone = "🔇"  # Mudo
-        elif self.volume_atual < 0.3:
-            icone = "🔈"  # Volume baixo
-        elif self.volume_atual < 0.7:
-            icone = "🔉"  # Volume médio
-        else:
-            icone = "🔊"  # Volume alto
-        
+        """Desenha o controle de volume no canto inferior esquerdo"""
         # Desenhar ícone
-        if self.icone_volume_img:
-            self.tela.blit(self.icone_volume_img, (x_icone, y_icone))
-        else:
-            desenhar_texto(self.tela, icone, (x_icone, y_icone), BRANCO, 20, sombra=True)
+        x_icone, y_icone = self.obter_posicao_icone_volume()
+        self.tela.blit(self.imagem_volume, (x_icone, y_icone))
         
-        # Desenhar barra se o mouse estiver sobre o ícone
-        if self.mostrar_controle_volume:
-            x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
-            altura_barra = 10
-            
-            # Fundo da barra
-            fundo_surf = pygame.Surface((largura_barra + 10, altura_barra + 10))
-            fundo_surf.set_alpha(180)
-            fundo_surf.fill((20, 20, 30))
-            self.tela.blit(fundo_surf, (x_barra - 5, y_barra - 5))
-            
-            # Borda da barra
-            pygame.draw.rect(self.tela, BRANCO, (x_barra - 5, y_barra - 5, 
-                           largura_barra + 10, altura_barra + 10), 2)
-            
-            # Fundo da barra de volume (cinza escuro)
-            pygame.draw.rect(self.tela, (60, 60, 60), (x_barra, y_barra, largura_barra, altura_barra))
-            
-            # Barra de volume atual (verde para bom volume, vermelho para mudo)
-            largura_volume = int(largura_barra * self.volume_atual)
-            if largura_volume > 0:
-                cor_volume = VERDE if self.volume_atual > 0.1 else VERMELHO
-                pygame.draw.rect(self.tela, cor_volume, (x_barra, y_barra, largura_volume, altura_barra))
-            
-            # Indicador do cursor (linha vertical)
-            cursor_x = x_barra + int(largura_barra * self.volume_atual)
-            pygame.draw.line(self.tela, BRANCO, (cursor_x, y_barra - 2), (cursor_x, y_barra + altura_barra + 2), 3)
-            
-            # Texto do volume (porcentagem)
-            volume_texto = f"{int(self.volume_atual * 100)}%"
-            desenhar_texto(self.tela, volume_texto, (x_barra + largura_barra + 15, y_barra - 2), 
-                         BRANCO, 14, sombra=True)
+        # Obter posição da barra
+        x_barra, y_barra, largura_barra = self.obter_posicao_barra_volume()
+        
+        # Desenhar barra de volume
+        barra_rect = pygame.Rect(x_barra, y_barra, largura_barra, 8)
+        pygame.draw.rect(self.tela, (50, 50, 50), barra_rect)  # Fundo
+        
+        # Desenhar volume atual
+        largura_atual = int(largura_barra * self.volume)
+        if largura_atual > 0:
+            pygame.draw.rect(self.tela, (100, 255, 100), 
+                           (x_barra, y_barra, largura_atual, 8))
+        
+        # Borda da barra
+        pygame.draw.rect(self.tela, BRANCO, barra_rect, 1)
 
 if __name__ == "__main__":
     jogo = Jogo()

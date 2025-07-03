@@ -9,7 +9,7 @@ class UpgradeManager:
         self.upgrades_basicos = [
             {"nome": "+1 Dano", "tipo": "dano", "descricao": "Aumenta dano em 1"},
             {"nome": "+10 Vida", "tipo": "vida", "descricao": "Aumenta vida máxima em 10"},
-            {"nome": "+1 Projétil", "tipo": "projeteis", "descricao": "Atira mais 1 projétil"},
+            {"nome": "Múltiplos Tiros", "tipo": "projeteis", "descricao": "Atira mais 1 projétil"},
             {"nome": "Tiro Atravessa", "tipo": "atravessar", "descricao": "Projétil atravessa +1 inimigo"},
             {"nome": "Velocidade Tiro", "tipo": "vel_tiro", "descricao": "Projéteis mais rápidos"},
             {"nome": "Alcance +1", "tipo": "alcance", "descricao": "Maior alcance de tiro"},
@@ -40,7 +40,7 @@ class UpgradeManager:
                 vida_nivel = getattr(jogador, 'vida_upgrades', 0)
                 if vida_nivel < 5:
                     upgrade_copia = upgrade.copy()
-                    upgrade_copia['nivel_atual'] = vida_nivel
+                    upgrade_copia['nivel_atual'] = str(vida_nivel)
                     upgrades_disponiveis.append(upgrade_copia)
             else:
                 upgrades_disponiveis.append(upgrade)

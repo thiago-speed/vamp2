@@ -441,7 +441,9 @@ class Jogador:
         self.atualizar_habilidades()
     
     def desenhar(self, tela, camera):
-        pos_tela = posicao_na_tela(self.pos, camera)
+        """Desenha o jogador na tela"""
+        # Posição na tela (considerando a câmera)
+        pos_tela = [self.pos[0] - camera[0], self.pos[1] - camera[1]]
         
         # Desenhar raio de coleta se tiver upgrade
         if self.coleta_nivel > 0:
@@ -453,15 +455,26 @@ class Jogador:
             raio_escudo = self.raio + 15 + (self.escudo_nivel * 3)
             pygame.draw.circle(tela, (0, 255, 255), (int(pos_tela[0]), int(pos_tela[1])), raio_escudo, 3)
         
-        # Piscar quando invulnerável
+        # Desenhar quadrado do jogador com cor baseada no estado
         if self.invulneravel and (pygame.time.get_ticks() // 100) % 2:
             cor = CINZA
         elif self.dash_ativo:
             cor = (255, 255, 0)  # Amarelo durante dash
         else:
-            cor = AZUL
+            cor = BRANCO
         
-        pygame.draw.circle(tela, cor, (int(pos_tela[0]), int(pos_tela[1])), self.raio)
+        pygame.draw.rect(tela, cor, 
+                        (pos_tela[0] - self.raio, pos_tela[1] - self.raio, 
+                         self.raio * 2, self.raio * 2))
+        
+        # Se invulnerável, desenhar efeito de brilho
+        if self.invulneravel:
+            # Brilho pulsante
+            alpha = int(128 + 128 * math.sin(pygame.time.get_ticks() * 0.01))
+            brilho = pygame.Surface((self.raio * 2 + 4, self.raio * 2 + 4))
+            brilho.set_alpha(alpha)
+            brilho.fill(DOURADO)
+            tela.blit(brilho, (pos_tela[0] - self.raio - 2, pos_tela[1] - self.raio - 2))
         
         # Desenhar espadas orbitais
         for espada in self.espadas:

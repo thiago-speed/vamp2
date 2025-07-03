@@ -393,7 +393,7 @@ class UpgradeManager:
             jogador.critico_chance = getattr(jogador, 'critico_chance', 0) + 0.25
         
         elif tipo == 'velocidade_lendaria':
-            jogador.velocidade *= 2.5  # +150% = 2.5x
+            jogador.velocidade *= 2.0  # +100% = 2x (era 2.5x)
             jogador.clone_fantasma = True
         
         elif tipo == 'alcance_lendaria':
