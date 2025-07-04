@@ -87,9 +87,9 @@ class Item:
 def gerar_item_aleatorio(jogador_pos):
     """Gera um item em posição aleatória próxima ao jogador"""
     
-    # Tipos de itens e suas probabilidades - corações muito mais raros
+    # Tipos de itens e suas probabilidades - itens muito mais raros
     tipos = ["xp_magnetico", "bomba_tela", "coracao"]
-    pesos = [0.6, 0.35, 0.05]  # Apenas 5% chance de coração (era 20%)
+    pesos = [0.3, 0.15, 0.01]  # Itens muito mais raros
     
     tipo = random.choices(tipos, weights=pesos)[0]
     

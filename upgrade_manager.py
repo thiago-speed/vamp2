@@ -363,7 +363,6 @@ class UpgradeManager:
         
         elif upgrade_id == 'espada':
             jogador.espada_nivel += 1
-            jogador.atualizar_espadas()  # Atualizar espadas orbitais
         
         elif upgrade_id == 'dash':
             jogador.dash_nivel += 1
@@ -419,7 +418,6 @@ class UpgradeManager:
         elif tipo == 'espada_lendaria':
             jogador.espada_nivel += 3
             jogador.ondas_choque = True
-            jogador.atualizar_espadas()
         
         elif tipo == 'dash_lendaria':
             jogador.dash_cooldown_lendario = True

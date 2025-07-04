@@ -584,11 +584,8 @@ class Jogador:
         # Atualizar escudo
         if self.escudo_ativo and tempo_atual > self.escudo_duracao:
             self.escudo_ativo = False
-        
-        # Atualizar espadas orbitais
-        self.atualizar_espadas()
     
-    def atualizar_espadas(self):
+    def atualizar_espadas(self, inimigos):
         """Atualiza o sistema de espadas orbitais"""
         # Verificar se precisa criar/atualizar espadas
         num_espadas_desejado = self.espada_nivel
@@ -602,7 +599,7 @@ class Jogador:
         
         # Atualizar cada espada
         for espada in self.espadas:
-            espada.atualizar([])  # Passaremos inimigos no main.py
+            espada.atualizar(inimigos)
     
     def obter_espadas(self):
         """Retorna lista de espadas orbitais"""
