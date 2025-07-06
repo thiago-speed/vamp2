@@ -1,24 +1,19 @@
 import random
 from config import *
 
+
 class UpgradeManager:
     def __init__(self):
-        # Contadores de cartas por tipo
         self.contadores_cartas = {
             'vida': 0, 'dano': 0, 'velocidade': 0, 'alcance': 0, 
             'cadencia': 0, 'atravessar': 0, 'projeteis': 0, 'coleta': 0,
             'espada': 0, 'dash': 0, 'bomba': 0, 'raios': 0, 'campo': 0
         }
-        
-        # Sistema de cartas lendárias
         self.cartas_lendarias_disponiveis = set()
         self.cartas_lendarias_obtidas = set()
-        
-        # Controle de cartas repetidas - cada carta só pode aparecer uma vez por seleção
         self.cartas_ja_oferecidas = set()
-    
+
     def get_upgrades_basicos(self, jogador):
-        """Retorna os upgrades básicos disponíveis"""
         return {
             'vida': {
                 'nome': 'Vida Extra',
@@ -51,7 +46,7 @@ class UpgradeManager:
                 'tipo': 'atravessar'
             },
             'projeteis': {
-                'nome': 'Penetracao',
+                'nome': 'Multi-tiros',
                 'descricao': f'Nivel {jogador.projeteis_nivel} -> UPGRADE PRO NIVEL {jogador.projeteis_nivel + 1}',
                 'tipo': 'projeteis'
             },
@@ -61,9 +56,8 @@ class UpgradeManager:
                 'tipo': 'coleta'
             }
         }
-        
+
     def get_upgrades_habilidades(self, jogador):
-        """Retorna as habilidades especiais disponíveis"""
         return {
             'espada': {
                 'nome': 'Espada Orbital',
@@ -91,32 +85,25 @@ class UpgradeManager:
                 'tipo': 'campo'
             }
         }
-    
+
     def obter_opcoes_upgrade(self, jogador):
-        """Gera 3 opções de upgrade para o jogador escolher - sem repetições"""
-        # Limpar lista de cartas já oferecidas a cada nova seleção
         self.cartas_ja_oferecidas.clear()
-        
-        # Primeiro verificar se todos os upgrades estão no máximo
+
         if self.todos_upgrades_maximos(jogador):
-            return "todos_maximos"  # Sinal especial
-        
-        # Primeiro verificar se há cartas lendárias disponíveis
+            return "todos_maximos"
+
         self.verificar_cartas_lendarias()
-        
         opcoes = []
         tentativas = 0
-        max_tentativas = 50  # Evitar loop infinito
-        
-        # Se há carta lendária disponível, incluir uma
+        max_tentativas = 50
+
         if self.cartas_lendarias_disponiveis and tentativas < max_tentativas:
             carta_lendaria = list(self.cartas_lendarias_disponiveis)[0]
             opcoes.append(self.criar_carta_lendaria(carta_lendaria))
             self.cartas_lendarias_disponiveis.remove(carta_lendaria)
             self.cartas_lendarias_obtidas.add(carta_lendaria)
             self.cartas_ja_oferecidas.add(carta_lendaria)
-        
-        # Preencher o resto com cartas normais (sem repetições)
+
         while len(opcoes) < 3 and tentativas < max_tentativas:
             tentativas += 1
             carta = self.gerar_carta_normal(jogador)
@@ -124,28 +111,23 @@ class UpgradeManager:
                 opcoes.append(carta)
                 self.cartas_ja_oferecidas.add(carta['id'])
             elif not carta:
-                # Fallback para cartas sempre disponíveis
                 carta_fallback = self.gerar_carta_fallback(jogador)
                 if carta_fallback and carta_fallback['id'] not in self.cartas_ja_oferecidas:
                     opcoes.append(carta_fallback)
                     self.cartas_ja_oferecidas.add(carta_fallback['id'])
-        
+
         return opcoes[:3]
-    
+
     def verificar_cartas_lendarias(self):
-        """Verifica quais cartas lendárias devem ser desbloqueadas"""
-        # Verificar cada tipo de upgrade para ver se atingiu 5 cartas
         for tipo, contador in self.contadores_cartas.items():
             if contador >= 5:
                 carta_lendaria = f"{tipo}_lendaria"
                 if carta_lendaria not in self.cartas_lendarias_obtidas:
                     self.cartas_lendarias_disponiveis.add(carta_lendaria)
-    
+
     def gerar_carta_normal(self, jogador):
-        """Gera uma carta de upgrade normal"""
         opcoes_disponiveis = []
-        
-        # Stats básicos - verificar se ainda pode melhorar E se não tem lendária
+
         if jogador.vida_nivel < 10 and 'vida_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('vida')
         if jogador.dano_nivel < 10 and 'dano_lendaria' not in self.cartas_lendarias_obtidas:
@@ -162,8 +144,6 @@ class UpgradeManager:
             opcoes_disponiveis.append('projeteis')
         if jogador.coleta_nivel < 5 and 'coleta_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('coleta')
-        
-        # Habilidades especiais - verificar se não tem lendária
         if jogador.espada_nivel < 5 and 'espada_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('espada')
         if jogador.dash_nivel < 5 and 'dash_lendaria' not in self.cartas_lendarias_obtidas:
@@ -174,20 +154,17 @@ class UpgradeManager:
             opcoes_disponiveis.append('raios')
         if jogador.campo_nivel < 5 and 'campo_lendaria' not in self.cartas_lendarias_obtidas:
             opcoes_disponiveis.append('campo')
-        
+
         if not opcoes_disponiveis:
             return None
-        
+
         tipo_escolhido = random.choice(opcoes_disponiveis)
         return self.criar_carta_upgrade(tipo_escolhido, jogador)
-    
+
     def criar_carta_upgrade(self, tipo, jogador):
-        """Cria uma carta de upgrade baseada no tipo"""
-        # Usar os métodos que já criei para obter as informações corretas
         upgrades_basicos = self.get_upgrades_basicos(jogador)
         upgrades_habilidades = self.get_upgrades_habilidades(jogador)
-        
-        # Primeiro verificar nos básicos
+
         if tipo in upgrades_basicos:
             info = upgrades_basicos[tipo]
             return {
@@ -196,8 +173,7 @@ class UpgradeManager:
                 'descricao': info['descricao'],
                 'tipo': tipo
             }
-        
-        # Depois verificar nas habilidades
+
         if tipo in upgrades_habilidades:
             info = upgrades_habilidades[tipo]
             return {
@@ -206,23 +182,20 @@ class UpgradeManager:
                 'descricao': info['descricao'],
                 'tipo': tipo
             }
-        
-        # Fallback para tipos não encontrados
+
         return {
             'id': tipo,
             'nome': f'Upgrade {tipo.title()}',
             'descricao': f'Melhora {tipo}',
             'tipo': tipo
         }
-    
+
     def gerar_carta_fallback(self, jogador):
-        """Gera uma carta de fallback - sempre dano ou vida"""
         opcoes_fallback = ['dano', 'vida', 'velocidade']
         tipo = random.choice(opcoes_fallback)
         return self.criar_carta_upgrade(tipo, jogador)
-    
+
     def criar_carta_lendaria(self, tipo_lendaria):
-        """Cria uma carta lendária com efeitos especiais"""
         cartas_lendarias = {
             'vida_lendaria': {
                 'id': 'vida_lendaria',
@@ -316,128 +289,96 @@ class UpgradeManager:
                 'raridade': 'lendaria'
             }
         }
-        
+
         return cartas_lendarias.get(tipo_lendaria)
-    
+
     def aplicar_upgrade(self, jogador, upgrade_opcao):
-        """Aplica um upgrade ao jogador e incrementa contador"""
         upgrade_id = upgrade_opcao['id']
-        
-        # Incrementar contador para cartas normais
+
         if upgrade_id in self.contadores_cartas:
             self.contadores_cartas[upgrade_id] += 1
-        
-        # Aplicar efeitos do upgrade
+
         if upgrade_id == 'vida':
             jogador.vida_nivel += 1
             jogador.hp_max += 20
-            jogador.hp = jogador.hp_max  # Curar completamente
-        
+            jogador.hp = jogador.hp_max
         elif upgrade_id == 'dano':
             jogador.dano_nivel += 1
             jogador.dano += 3
-        
         elif upgrade_id == 'velocidade':
             jogador.velocidade_nivel += 1
-            jogador.velocidade *= 1.15  # +15%
-        
+            jogador.velocidade *= 1.15
         elif upgrade_id == 'alcance':
             jogador.alcance_nivel += 1
-            jogador.alcance_tiro *= 1.25  # +25%
-        
+            jogador.alcance_tiro *= 1.25
         elif upgrade_id == 'cadencia':
             jogador.cadencia_nivel += 1
-            jogador.cooldown_tiro = max(50, int(jogador.cooldown_tiro * 0.8))  # +20% velocidade
-        
+            jogador.cooldown_tiro = max(50, int(jogador.cooldown_tiro * 0.8))
         elif upgrade_id == 'atravessar':
             jogador.atravessar_nivel += 1
             jogador.atravessar_inimigos += 1
-        
         elif upgrade_id == 'projeteis':
             jogador.projeteis_nivel += 1
             jogador.projeteis_simultaneos += 1
-        
         elif upgrade_id == 'coleta':
             jogador.coleta_nivel += 1
             jogador.raio_coleta += 30
-        
         elif upgrade_id == 'espada':
             jogador.espada_nivel += 1
-        
         elif upgrade_id == 'dash':
             jogador.dash_nivel += 1
-        
         elif upgrade_id == 'bomba':
             jogador.bomba_nivel += 1
-        
         elif upgrade_id == 'raios':
             jogador.raios_nivel += 1
-        
         elif upgrade_id == 'campo':
             jogador.campo_nivel += 1
-        
-        # Aplicar efeitos lendários
         elif upgrade_id.endswith('_lendaria'):
             self.aplicar_efeito_lendario(jogador, upgrade_id)
-    
+
     def aplicar_efeito_lendario(self, jogador, tipo):
-        """Aplica efeitos especiais das cartas lendárias"""
         if tipo == 'vida_lendaria':
             jogador.hp_max += 100
             jogador.hp = jogador.hp_max
-            jogador.regeneracao = getattr(jogador, 'regeneracao', 0) + 2  # +2 HP/seg
-        
+            jogador.regeneracao = getattr(jogador, 'regeneracao', 0) + 2
         elif tipo == 'dano_lendaria':
-            jogador.dano = int(jogador.dano * 3)  # +200% = 3x
+            jogador.dano = int(jogador.dano * 3)
             jogador.critico_chance = getattr(jogador, 'critico_chance', 0) + 0.25
-        
         elif tipo == 'velocidade_lendaria':
-            jogador.velocidade *= 2.0  # +100% = 2x (era 2.5x)
+            jogador.velocidade *= 2.0
             jogador.clone_fantasma = True
-        
         elif tipo == 'alcance_lendaria':
-            jogador.alcance_tiro *= 4  # +300% = 4x
-            jogador.atravessar_inimigos = 999  # Infinito
-        
+            jogador.alcance_tiro *= 4
+            jogador.atravessar_inimigos = 999
         elif tipo == 'cadencia_lendaria':
-            jogador.cooldown_tiro = max(20, jogador.cooldown_tiro // 5)  # +400%
+            jogador.cooldown_tiro = max(20, jogador.cooldown_tiro // 5)
             jogador.tiros_triplos = True
-        
         elif tipo == 'atravessar_lendaria':
             jogador.atravessar_inimigos = 999
             jogador.dano_acumulativo = True
-        
         elif tipo == 'projeteis_lendaria':
             jogador.projeteis_simultaneos += 5
             jogador.padrao_espiral = True
-        
         elif tipo == 'coleta_lendaria':
-            jogador.raio_coleta = 2000  # Tela inteira
+            jogador.raio_coleta = 2000
             jogador.xp_multiplicador = getattr(jogador, 'xp_multiplicador', 1.0) * 2.0
-        
         elif tipo == 'espada_lendaria':
             jogador.espada_nivel += 3
             jogador.ondas_choque = True
-        
         elif tipo == 'dash_lendaria':
             jogador.dash_cooldown_lendario = True
             jogador.dash_explosao = True
-        
         elif tipo == 'bomba_lendaria':
             jogador.bomba_nivel += 2
             jogador.bombas_nucleares = True
-        
         elif tipo == 'raios_lendaria':
             jogador.raios_nivel += 2
             jogador.tempestade_permanente = True
-        
         elif tipo == 'campo_lendaria':
-            jogador.campo_nivel = 10  # Máximo especial
+            jogador.campo_nivel = 10
             jogador.buraco_negro = True
-    
+
     def todos_upgrades_maximos(self, jogador):
-        """Verifica se todos os upgrades estão no nível máximo ou têm carta lendária"""
-        # Verificar stats básicos - considera máximo se tem lendária OU nível máximo
         if (not (jogador.vida_nivel >= 10 or 'vida_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.dano_nivel >= 10 or 'dano_lendaria' in self.cartas_lendarias_obtidas) or 
             not (jogador.velocidade_nivel >= 8 or 'velocidade_lendaria' in self.cartas_lendarias_obtidas) or
@@ -447,18 +388,16 @@ class UpgradeManager:
             not (jogador.projeteis_nivel >= 5 or 'projeteis_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.coleta_nivel >= 5 or 'coleta_lendaria' in self.cartas_lendarias_obtidas)):
             return False
-        
-        # Verificar habilidades especiais - considera máximo se tem lendária OU nível máximo
+
         if (not (jogador.espada_nivel >= 5 or 'espada_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.dash_nivel >= 5 or 'dash_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.bomba_nivel >= 5 or 'bomba_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.raios_nivel >= 5 or 'raios_lendaria' in self.cartas_lendarias_obtidas) or
             not (jogador.campo_nivel >= 5 or 'campo_lendaria' in self.cartas_lendarias_obtidas)):
             return False
-        
-        # Verificar se ainda há cartas lendárias disponíveis
+
         self.verificar_cartas_lendarias()
         if self.cartas_lendarias_disponiveis:
             return False
-        
+
         return True 

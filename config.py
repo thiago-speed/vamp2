@@ -1,9 +1,6 @@
-# Configurações do jogo
 LARGURA_TELA = 1200
 ALTURA_TELA = 800
 FPS = 60
-
-# Cores
 PRETO = (0, 0, 0)
 BRANCO = (255, 255, 255)
 VERMELHO = (255, 0, 0)
@@ -15,44 +12,23 @@ ROXO = (128, 0, 128)
 LARANJA = (255, 165, 0)
 CINZA = (128, 128, 128)
 DOURADO = (255, 215, 0)
-
-# Mapa
 LARGURA_MAPA = 3000
 ALTURA_MAPA = 3000
-
-# Jogador
 JOGADOR_RAIO = 15
 JOGADOR_VELOCIDADE = 5
 JOGADOR_HP_INICIAL = 10
 JOGADOR_DANO_INICIAL = 1
-
-# Projétil
 PROJETIL_VELOCIDADE = 8
 PROJETIL_RAIO = 3
 PROJETIL_ALCANCE = 300
-
-# Inimigos
 INIMIGO_SPAWN_DISTANCIA = 400
 INIMIGO_NORMAL_RAIO = 12
 INIMIGO_RAPIDO_RAIO = 8
 INIMIGO_TANQUE_RAIO = 20
-
-# XP - Sistema progressivo
 XP_RAIO = 5
 XP_VALOR = 1
 
 def calcular_xp_para_level(level):
-    """Calcula XP necessário para subir para o próximo nível - progressão mais equilibrada"""
-    # Progressão mais suave que acompanha a dificuldade:
-    # Level 1->2: 25 XP (muito fácil)
-    # Level 2->3: 40 XP 
-    # Level 3->4: 60 XP
-    # Level 4->5: 85 XP
-    # Level 5->6: 115 XP
-    # Level 6->7: 150 XP
-    # Level 7->8: 190 XP
-    # Level 8+: continua crescendo mais devagar
-    
     if level == 1:
         return 25
     elif level == 2:
@@ -68,22 +44,14 @@ def calcular_xp_para_level(level):
     elif level == 7:
         return 190
     else:
-        # Para níveis 8+, crescimento mais moderado
         base = 190
-        incremento = (level - 7) * 35  # +35 XP por nivel apos o 7
+        incremento = (level - 7) * 35
         return base + incremento
-
-# Itens
+        
 ITEM_RAIO = 8
-
-# Boss
 BOSS_RAIO = 50
-BOSS_HP = 5000
-
-# Minimapa
+BOSS_HP = 50000
 MINIMAPA_TAMANHO = 150
 MINIMAPA_X = LARGURA_TELA - MINIMAPA_TAMANHO - 10
 MINIMAPA_Y = 10
-
-# Tempo de jogo
-DURACAO_MAXIMA = 600  # 10 minutos em segundos 
+DURACAO_MAXIMA = 600
